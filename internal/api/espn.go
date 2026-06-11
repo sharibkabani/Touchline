@@ -104,6 +104,7 @@ func (p *ESPNProvider) enrichDetails(ctx context.Context, competition types.Comp
 
 			home, away := summaryLineups(summary)
 			events := buildCommentaryEvents(summary.Commentary, m.HomeTeam.Name, m.AwayTeam.Name)
+			boxStats, hasBox := summaryStatistics(summary)
 
 			mu.Lock()
 			details := scoreboard.Details[m.ID]
@@ -111,7 +112,25 @@ func (p *ESPNProvider) enrichDetails(ctx context.Context, competition types.Comp
 			details.AwayLineup = away
 			if len(events) > 0 {
 				details.Events = events
-				applyCardCounts(&details.Statistics, events)
+			}
+			// The summary boxscore is the fuller stat set (the fifa.world
+			// scoreboard omits it entirely), so prefer it when present.
+			if hasBox {
+				details.Statistics = boxStats
+			}
+			// The timeline is the source of truth for card counts so the numbers
+			// always match the events shown alongside them.
+			if len(details.Events) > 0 {
+				applyCardCounts(&details.Statistics, details.Events)
+			}
+			if summary.GameInfo.Attendance > 0 {
+				details.Attendance = summary.GameInfo.Attendance
+			}
+			if ref := summaryReferee(summary); ref != "" {
+				details.Referee = ref
+			}
+			if v := summaryVenue(summary); v != "" {
+				details.Venue = v
 			}
 			scoreboard.Details[m.ID] = details
 			mu.Unlock()
@@ -142,6 +161,47 @@ func summaryLineups(summary espnSummary) (home, away types.TeamLineup) {
 		}
 	}
 	return home, away
+}
+
+// summaryStatistics reads the per-team boxscore into our flat statistics struct.
+// ok is false when no boxscore is present (e.g. well before kickoff).
+func summaryStatistics(summary espnSummary) (stats types.MatchStatistics, ok bool) {
+	for _, team := range summary.Boxscore.Teams {
+		switch team.HomeAway {
+		case "home", "away":
+		default:
+			continue
+		}
+		home := team.HomeAway == "home"
+		for _, stat := range team.Statistics {
+			applyStat(&stats, stat.Name, stat.DisplayValue, home)
+		}
+		ok = true
+	}
+	return stats, ok
+}
+
+// summaryReferee returns the named referee, falling back to the first listed
+// official.
+func summaryReferee(summary espnSummary) string {
+	for _, official := range summary.GameInfo.Officials {
+		if strings.EqualFold(official.Position.DisplayName, "Referee") {
+			return official.DisplayName
+		}
+	}
+	if len(summary.GameInfo.Officials) > 0 {
+		return summary.GameInfo.Officials[0].DisplayName
+	}
+	return ""
+}
+
+// summaryVenue builds a "Stadium, City" string from the summary game info.
+func summaryVenue(summary espnSummary) string {
+	venue := summary.GameInfo.Venue.FullName
+	if city := summary.GameInfo.Venue.Address.City; city != "" {
+		venue = strings.TrimSpace(strings.TrimPrefix(venue+", "+city, ", "))
+	}
+	return venue
 }
 
 // buildCommentaryEvents distills the prose commentary feed into a goal/card
@@ -508,8 +568,16 @@ func applyStat(stats *types.MatchStatistics, name, value string, home bool) {
 		set(&stats.ShotsOnTargetHome, &stats.ShotsOnTargetAway, home, atoi(value))
 	case "wonCorners":
 		set(&stats.CornersHome, &stats.CornersAway, home, atoi(value))
+	case "offsides":
+		set(&stats.OffsidesHome, &stats.OffsidesAway, home, atoi(value))
+	case "saves":
+		set(&stats.SavesHome, &stats.SavesAway, home, atoi(value))
 	case "foulsCommitted":
 		set(&stats.FoulsHome, &stats.FoulsAway, home, atoi(value))
+	case "yellowCards":
+		set(&stats.YellowCardsHome, &stats.YellowCardsAway, home, atoi(value))
+	case "redCards":
+		set(&stats.RedCardsHome, &stats.RedCardsAway, home, atoi(value))
 	}
 }
 

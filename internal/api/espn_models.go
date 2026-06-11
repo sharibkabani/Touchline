@@ -97,6 +97,30 @@ type espnDetail struct {
 type espnSummary struct {
 	Rosters    []espnRoster     `json:"rosters"`
 	Commentary []espnCommentary `json:"commentary"`
+	GameInfo   espnGameInfo     `json:"gameInfo"`
+	Boxscore   espnBoxscore     `json:"boxscore"`
+}
+
+// espnGameInfo carries the contextual facts ESPN attaches to a fixture:
+// attendance, the match officials, and a richer venue (with city/country).
+type espnGameInfo struct {
+	Attendance int       `json:"attendance"`
+	Venue      espnVenue `json:"venue"`
+	Officials  []struct {
+		DisplayName string `json:"displayName"`
+		Position    struct {
+			DisplayName string `json:"displayName"`
+		} `json:"position"`
+	} `json:"officials"`
+}
+
+// espnBoxscore exposes the full per-team statistic set (the scoreboard endpoint
+// only returns a subset), keyed by home/away.
+type espnBoxscore struct {
+	Teams []struct {
+		HomeAway   string         `json:"homeAway"`
+		Statistics []espnStatItem `json:"statistics"`
+	} `json:"teams"`
 }
 
 type espnCommentary struct {
@@ -112,9 +136,9 @@ type espnPlay struct {
 		Text string `json:"text"`
 		Type string `json:"type"`
 	} `json:"type"`
-	Text         string `json:"text"`
-	ScoringPlay  bool   `json:"scoringPlay"`
-	Team         struct {
+	Text        string `json:"text"`
+	ScoringPlay bool   `json:"scoringPlay"`
+	Team        struct {
 		ID          string `json:"id"`
 		DisplayName string `json:"displayName"`
 	} `json:"team"`

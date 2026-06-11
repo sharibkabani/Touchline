@@ -111,34 +111,48 @@ func (m Model) renderFooter() string {
 	return helpStyle.Render(help)
 }
 
+// Pane chrome. lipgloss keeps Padding *inside* a style's Width but adds the
+// Border *outside* it, so to expose exactly N columns of text we set the style
+// width to N+panePadWidth and the box renders N+paneFrameWidth columns wide.
+const (
+	panePadWidth   = 2                // Padding(0, 1): one column each side
+	paneFrameWidth = panePadWidth + 2 // padding + NormalBorder (one column each side)
+)
+
+// renderPane frames content in the bordered box, sizing it so exactly textWidth
+// columns are available for content. This prevents lipgloss from auto-wrapping
+// (and thus growing) the pane, and makes the box exactly textWidth+paneFrameWidth
+// columns wide.
+func (m Model) renderPane(content string, textWidth, height int) string {
+	return paneStyle.
+		Width(textWidth + panePadWidth).
+		Height(height).
+		Render(clampHeight(content, height))
+}
+
 // renderDashboardBody lays out the live match list and detail panes. It returns
 // only the panes (no banner/footer) so the caller can center the whole view.
 func (m Model) renderDashboardBody(availableRows int) string {
 	contentWidth := max(32, m.width-2)
-	const paneFrameWidth = 4
 
 	if contentWidth < 88 {
-		paneInnerWidth := max(20, contentWidth-paneFrameWidth)
+		textWidth := max(20, contentWidth-paneFrameWidth)
 		// Stack the panes but keep both boxes the same height so they read as a
 		// matching pair just like the side-by-side layout.
 		paneHeight := max(5, (availableRows-2)/2)
-		list := paneStyle.Width(paneInnerWidth).Height(paneHeight).
-			Render(clampHeight(m.renderMatchListPane(paneInnerWidth, paneHeight), paneHeight))
-		details := paneStyle.Width(paneInnerWidth).Height(paneHeight).
-			Render(clampHeight(m.renderDetailContent(paneInnerWidth, paneHeight), paneHeight))
+		list := m.renderPane(m.renderMatchListPane(textWidth, paneHeight), textWidth, paneHeight)
+		details := m.renderPane(m.renderDetailContent(textWidth, paneHeight), textWidth, paneHeight)
 		return lipgloss.JoinVertical(lipgloss.Center, list, details)
 	}
 
 	leftOuterWidth := min(42, max(30, contentWidth/3))
 	rightOuterWidth := max(36, contentWidth-leftOuterWidth-1)
-	leftInnerWidth := max(20, leftOuterWidth-paneFrameWidth)
-	rightInnerWidth := max(20, rightOuterWidth-paneFrameWidth)
+	leftTextWidth := max(20, leftOuterWidth-paneFrameWidth)
+	rightTextWidth := max(20, rightOuterWidth-paneFrameWidth)
 	// Both panes share the exact same height so the rectangles are identical.
 	paneHeight := availableRows
-	left := paneStyle.Width(leftInnerWidth).Height(paneHeight).
-		Render(clampHeight(m.renderMatchListPane(leftInnerWidth, paneHeight), paneHeight))
-	right := paneStyle.Width(rightInnerWidth).Height(paneHeight).
-		Render(clampHeight(m.renderDetailContent(rightInnerWidth, paneHeight), paneHeight))
+	left := m.renderPane(m.renderMatchListPane(leftTextWidth, paneHeight), leftTextWidth, paneHeight)
+	right := m.renderPane(m.renderDetailContent(rightTextWidth, paneHeight), rightTextWidth, paneHeight)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 }
@@ -312,17 +326,22 @@ func (m Model) renderDetailContent(width, height int) string {
 	headLine(scoreTeamStyle.Render(truncate(match.HomeTeam.Name, nameCap)) +
 		mutedStyle.Render("   vs   ") +
 		scoreTeamStyle.Render(truncate(match.AwayTeam.Name, nameCap)))
-	headLine(bigScoreStyle.Render(bigScore(match.Score.Home, match.Score.Away)))
-	headLine(statusBadge(match.Status) + mutedStyle.Render("  "+matchStatusDetail(match)))
 
-	// Drop the venue line when the pane is too short — stats need the space more.
-	const statsSectionLines = 8 // "STATISTICS" header + seven stat rows
-	headLines := lipgloss.Height(strings.TrimRight(head.String(), "\n"))
-	showVenue := statsAvailable && details.Venue != "" && !showMatchInfo &&
-		(height <= 0 || headLines+1+statsSectionLines+1 <= height)
-	if showVenue {
-		headLine(mutedStyle.Render(truncate(details.Venue, textWidth)))
+	// The score is a priority, but so is the timeline: on a short pane the
+	// 5-line ASCII score collapses to a single line so a (compacted) timeline
+	// still fits without clipping rather than the big score eating the space.
+	stageLines := 0
+	if stage != "" {
+		stageLines = 1
 	}
+	minLayout := stageLines + 1 /*teams*/ + bigDigitHeight + 1 /*status*/ + 1 /*sep*/ + 1 + len(details.Events)
+	useBigScore := height <= 0 || minLayout <= height
+	if useBigScore {
+		headLine(bigScoreStyle.Render(bigScore(match.Score.Home, match.Score.Away)))
+	} else {
+		headLine(bigScoreStyle.Render(fmt.Sprintf("%d  —  %d", match.Score.Home, match.Score.Away)))
+	}
+	headLine(statusBadge(match.Status) + mutedStyle.Render("  "+matchStatusDetail(match)))
 
 	if !statsAvailable {
 		if m.loading {
@@ -339,25 +358,47 @@ func (m Model) renderDetailContent(width, height int) string {
 	const gap = 2
 	colWidth := max(16, (width-gap)/2)
 
-	var body string
-	switch {
-	case showMatchInfo:
-		body = renderMatchInfo(match, details, width)
-	case match.Status == types.StatusScheduled:
-		body = renderLineupBody(details.HomeLineup, details.AwayLineup, match.HomeTeam.Name, match.AwayTeam.Name, width, colWidth, gap)
-	default:
-		left := lipgloss.NewStyle().Width(colWidth).MarginRight(gap).Render(renderTimeline(details.Events, colWidth))
-		right := lipgloss.NewStyle().Width(colWidth).Render(renderStatsColumn(stats, colWidth))
-		body = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
-	}
-
 	headStr := strings.TrimRight(head.String(), "\n")
 	headLineCount := lipgloss.Height(headStr)
-	bodySep := "\n\n"
-	if height > 0 && headLineCount+1+statsSectionLines > height {
-		bodySep = "\n"
+
+	if showMatchInfo {
+		return headStr + "\n\n" + renderMatchInfo(match, details, width)
 	}
-	return headStr + bodySep + body
+	if match.Status == types.StatusScheduled {
+		return headStr + "\n\n" +
+			renderLineupBody(details.HomeLineup, details.AwayLineup, match.HomeTeam.Name, match.AwayTeam.Name, width, colWidth, gap)
+	}
+
+	// Live / finished. The score and timeline are the priority: when the pane is
+	// short the timeline collapses to one row per event (dropping the connector
+	// lines) so its bottom is never clipped, and the lower-priority match-facts
+	// block is only appended to the stats column when it actually fits.
+	bodyBudget := -1
+	if height > 0 {
+		bodyBudget = max(1, height-headLineCount-2)
+	}
+
+	compact := bodyBudget > 0 && 2*len(details.Events) > bodyBudget
+
+	statsCol := renderStatsColumn(stats, colWidth)
+	rightCol := statsCol
+	if facts := renderMatchFacts(details, colWidth); facts != "" {
+		needed := lipgloss.Height(statsCol) + 1 + lipgloss.Height(facts)
+		if bodyBudget <= 0 || needed <= bodyBudget {
+			rightCol = lipgloss.JoinVertical(lipgloss.Left, statsCol, "", facts)
+		}
+	}
+
+	left := lipgloss.NewStyle().Width(colWidth).MarginRight(gap).
+		Render(renderTimeline(details.Events, colWidth, compact))
+	right := lipgloss.NewStyle().Width(colWidth).Render(rightCol)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+
+	sep := "\n\n"
+	if height > 0 && headLineCount+2+lipgloss.Height(body) > height {
+		sep = "\n"
+	}
+	return headStr + sep + body
 }
 
 // renderMatchInfo shows the key facts about an upcoming fixture (competition,
@@ -425,6 +466,75 @@ func renderMatchInfo(match types.Match, details types.MatchDetails, width int) s
 	return center.Render(groupHeaderStyle.Render("MATCH INFO")) + "\n\n" +
 		center.Render(strings.Join(lines, "\n")) + "\n\n" +
 		center.Render(mutedStyle.Render("Lineups appear about an hour before kickoff."))
+}
+
+// renderMatchFacts builds a compact card of contextual facts (venue, city,
+// attendance, referee) used to fill the space beside a shorter stats column.
+// Rows with no data are omitted so the block never looks padded out, and it
+// returns "" when nothing is known.
+func renderMatchFacts(details types.MatchDetails, width int) string {
+	type fact struct{ label, value string }
+	facts := make([]fact, 0, 4)
+
+	arena, location := splitVenue(details.Venue)
+	if arena != "" {
+		facts = append(facts, fact{"Venue", arena})
+	}
+	if location != "" {
+		facts = append(facts, fact{"City", location})
+	}
+	if details.Attendance > 0 {
+		facts = append(facts, fact{"Crowd", formatThousands(details.Attendance)})
+	}
+	if details.Referee != "" {
+		facts = append(facts, fact{"Referee", details.Referee})
+	}
+	if len(facts) == 0 {
+		return ""
+	}
+
+	labelWidth := 0
+	for _, f := range facts {
+		if l := len([]rune(f.label)); l > labelWidth {
+			labelWidth = l
+		}
+	}
+	valueCap := max(4, width-labelWidth-3)
+
+	valueWidth := 0
+	for i := range facts {
+		facts[i].value = truncate(facts[i].value, valueCap)
+		if l := len([]rune(facts[i].value)); l > valueWidth {
+			valueWidth = l
+		}
+	}
+
+	// Pad both columns so every row is the same length; centering equal-length
+	// rows keeps the labels aligned in a column.
+	lines := make([]string, 0, len(facts))
+	for _, f := range facts {
+		label := mutedStyle.Render(fmt.Sprintf("%-*s", labelWidth, f.label))
+		value := normalRowStyle.Render(fmt.Sprintf("%-*s", valueWidth, f.value))
+		lines = append(lines, label+"  "+value)
+	}
+
+	center := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
+	return center.Render(tableHeaderStyle.Render("MATCH FACTS")) + "\n" +
+		center.Render(strings.Join(lines, "\n"))
+}
+
+// formatThousands renders an integer with comma group separators (88966 ->
+// "88,966").
+func formatThousands(n int) string {
+	s := fmt.Sprintf("%d", n)
+	var b strings.Builder
+	for i, r := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // splitVenue separates a "Stadium, City" string into its arena and location.
@@ -506,8 +616,10 @@ func formatLineupPlayer(player types.LineupPlayer, width int) string {
 
 // renderTimeline lays out goals and cards as a two-sided vertical timeline:
 // a central axis with home-team (left team) events to the left and away-team
-// (right team) events to the right, oldest at the top.
-func renderTimeline(events []types.MatchEvent, width int) string {
+// (right team) events to the right, oldest at the top. When compact is set the
+// connector lines between events are dropped, halving the height so every event
+// stays visible in a short pane.
+func renderTimeline(events []types.MatchEvent, width int, compact bool) string {
 	center := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
 	header := center.Render(tableHeaderStyle.Render("TIMELINE"))
 
@@ -552,7 +664,7 @@ func renderTimeline(events []types.MatchEvent, width int) string {
 		)
 		b.WriteString(node)
 		b.WriteString("\n")
-		if i < len(ordered)-1 {
+		if !compact && i < len(ordered)-1 {
 			b.WriteString(connector)
 			b.WriteString("\n")
 		}
@@ -664,7 +776,9 @@ func renderStatsColumn(stats types.MatchStatistics, width int) string {
 		statBar("Possession", stats.PossessionHome, stats.PossessionAway, "%", barWidth, valueWidth, labelWidth, blockWidth),
 		statBar("Shots", stats.ShotsHome, stats.ShotsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
 		statBar("On Target", stats.ShotsOnTargetHome, stats.ShotsOnTargetAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Saves", stats.SavesHome, stats.SavesAway, "", barWidth, valueWidth, labelWidth, blockWidth),
 		statBar("Corners", stats.CornersHome, stats.CornersAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Offsides", stats.OffsidesHome, stats.OffsidesAway, "", barWidth, valueWidth, labelWidth, blockWidth),
 		statBar("Fouls", stats.FoulsHome, stats.FoulsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
 		statBar("Yellows", stats.YellowCardsHome, stats.YellowCardsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
 		statBar("Reds", stats.RedCardsHome, stats.RedCardsAway, "", barWidth, valueWidth, labelWidth, blockWidth),

@@ -22,6 +22,10 @@
         "shotsOnTargetAway": 4,
         "cornersHome": 7,
         "cornersAway": 4,
+        "offsidesHome": 2,
+        "offsidesAway": 3,
+        "savesHome": 3,
+        "savesAway": 6,
         "foulsHome": 10,
         "foulsAway": 13,
         "yellowCardsHome": 1,
@@ -38,7 +42,9 @@
         { "minute": "88'", "type": "YELLOW", "text": "Yellow Card", "player": "Rodri", "team": "Spain", "home": true }
       ],
       "venue": "Santiago Bernabéu, Madrid",
-      "league": "FIFA World Cup"
+      "league": "FIFA World Cup",
+      "attendance": 81044,
+      "referee": "Clément Turpin"
     },
     {
       "match": {
@@ -62,6 +68,10 @@
         "shotsOnTargetAway": 3,
         "cornersHome": 4,
         "cornersAway": 3,
+        "offsidesHome": 1,
+        "offsidesAway": 2,
+        "savesHome": 2,
+        "savesAway": 4,
         "foulsHome": 8,
         "foulsAway": 11,
         "yellowCardsHome": 1,
@@ -77,7 +87,9 @@
         { "minute": "63'", "type": "YELLOW", "text": "Yellow Card", "player": "Casemiro", "team": "Brazil", "home": true }
       ],
       "venue": "Maracanã, Rio de Janeiro",
-      "league": "FIFA World Cup"
+      "league": "FIFA World Cup",
+      "attendance": 78838,
+      "referee": "Daniele Orsato"
     },
     {
       "match": {
@@ -101,6 +113,10 @@
         "shotsOnTargetAway": 2,
         "cornersHome": 2,
         "cornersAway": 3,
+        "offsidesHome": 1,
+        "offsidesAway": 1,
+        "savesHome": 1,
+        "savesAway": 2,
         "foulsHome": 5,
         "foulsAway": 6,
         "yellowCardsHome": 0,
@@ -114,7 +130,9 @@
         { "minute": "45'", "type": "YELLOW", "text": "Yellow Card", "player": "Antonio Rüdiger", "team": "Germany", "home": false }
       ],
       "venue": "Stade de France, Paris",
-      "league": "FIFA World Cup"
+      "league": "FIFA World Cup",
+      "attendance": 78112,
+      "referee": "Anthony Taylor"
     },
     {
       "match": {

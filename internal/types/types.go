@@ -52,6 +52,10 @@ type MatchStatistics struct {
 	ShotsOnTargetAway int `json:"shotsOnTargetAway"`
 	CornersHome       int `json:"cornersHome"`
 	CornersAway       int `json:"cornersAway"`
+	OffsidesHome      int `json:"offsidesHome"`
+	OffsidesAway      int `json:"offsidesAway"`
+	SavesHome         int `json:"savesHome"`
+	SavesAway         int `json:"savesAway"`
 	FoulsHome         int `json:"foulsHome"`
 	FoulsAway         int `json:"foulsAway"`
 	YellowCardsHome   int `json:"yellowCardsHome"`
@@ -104,6 +108,8 @@ type MatchDetails struct {
 	Events     []MatchEvent    `json:"events,omitempty"`
 	Venue      string          `json:"venue,omitempty"`
 	League     string          `json:"league,omitempty"`
+	Attendance int             `json:"attendance,omitempty"`
+	Referee    string          `json:"referee,omitempty"`
 	HomeLineup TeamLineup      `json:"homeLineup,omitempty"`
 	AwayLineup TeamLineup      `json:"awayLineup,omitempty"`
 }
