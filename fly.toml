@@ -1,0 +1,28 @@
+# fly.toml app configuration file generated for touchline on 2026-06-11T16:46:22-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'touchline'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[[mounts]]
+  source = 'touchline_data'
+  destination = '/data'
+
+# Raw TCP passthrough for SSH (this is not an HTTP app, so no [http_service]).
+[[services]]
+  protocol = 'tcp'
+  internal_port = 23234
+
+  [[services.ports]]
+    port = 22
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
+  cpus = 1
+  memory_mb = 256
