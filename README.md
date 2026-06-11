@@ -48,6 +48,22 @@ go build -o bin/touchline ./cmd/touchline
 ./bin/touchline
 ```
 
+## Serve over SSH
+
+Touchline can be served over SSH using [charmbracelet/wish](https://github.com/charmbracelet/wish). Each connection gets its own Bubble Tea program (independent view state), while the data services and caches are shared across all sessions so concurrent viewers reuse the same upstream data.
+
+```sh
+TOUCHLINE_SSH=true go run ./cmd/touchline
+```
+
+Then, from another terminal:
+
+```sh
+ssh -p 23234 localhost
+```
+
+A host key is generated automatically on first run at `TOUCHLINE_SSH_HOST_KEY_PATH` (default `.ssh/touchline_ed25519`). Connections require an interactive terminal (enforced by Wish's `activeterm` middleware); colors are forced on so SSH clients get the full themed UI.
+
 ## Configuration
 
 Copy `.env.example` to `.env` and adjust values as needed.
@@ -65,6 +81,9 @@ Supported variables:
 - `TOUCHLINE_REFRESH_INTERVAL`: auto-refresh interval, for example `30s`.
 - `TOUCHLINE_CACHE_TTL`: in-memory cache TTL, for example `25s`.
 - `TOUCHLINE_LOG_LEVEL`: `debug`, `info`, `warn`, or `error`.
+- `TOUCHLINE_SSH`: set to `true` to serve the TUI over SSH instead of running locally.
+- `TOUCHLINE_SSH_ADDR`: SSH listen address, for example `localhost:23234`.
+- `TOUCHLINE_SSH_HOST_KEY_PATH`: host key path (auto-generated if missing).
 
 ## Mock Data
 

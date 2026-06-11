@@ -17,6 +17,8 @@ const (
 	defaultProvider        = "espn"
 	defaultRefreshInterval = 30 * time.Second
 	defaultCacheTTL        = 25 * time.Second
+	defaultSSHAddress      = "localhost:23234"
+	defaultSSHHostKeyPath  = ".ssh/touchline_ed25519"
 )
 
 type Config struct {
@@ -27,6 +29,11 @@ type Config struct {
 	RefreshInterval time.Duration
 	CacheTTL        time.Duration
 	LogLevel        slog.Level
+
+	// SSHEnabled serves the TUI over SSH instead of running it locally.
+	SSHEnabled     bool
+	SSHAddress     string
+	SSHHostKeyPath string
 }
 
 func Load() (Config, error) {
@@ -42,6 +49,10 @@ func Load() (Config, error) {
 		RefreshInterval: getDurationEnv("TOUCHLINE_REFRESH_INTERVAL", defaultRefreshInterval),
 		CacheTTL:        getDurationEnv("TOUCHLINE_CACHE_TTL", defaultCacheTTL),
 		LogLevel:        getLogLevelEnv("TOUCHLINE_LOG_LEVEL", slog.LevelInfo),
+
+		SSHEnabled:     getBoolEnv("TOUCHLINE_SSH", false),
+		SSHAddress:     getEnv("TOUCHLINE_SSH_ADDR", defaultSSHAddress),
+		SSHHostKeyPath: getEnv("TOUCHLINE_SSH_HOST_KEY_PATH", defaultSSHHostKeyPath),
 	}, nil
 }
 
@@ -79,6 +90,19 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func getBoolEnv(key string, fallback bool) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	if value == "" {
+		return fallback
+	}
+	switch value {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func getDurationEnv(key string, fallback time.Duration) time.Duration {

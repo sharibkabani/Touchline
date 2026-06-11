@@ -314,9 +314,13 @@ func (m Model) renderDetailContent(width, height int) string {
 		scoreTeamStyle.Render(truncate(match.AwayTeam.Name, nameCap)))
 	headLine(bigScoreStyle.Render(bigScore(match.Score.Home, match.Score.Away)))
 	headLine(statusBadge(match.Status) + mutedStyle.Render("  "+matchStatusDetail(match)))
-	// The venue is part of the match-info card below, so skip it in the header
-	// to avoid showing it twice.
-	if statsAvailable && details.Venue != "" && !showMatchInfo {
+
+	// Drop the venue line when the pane is too short — stats need the space more.
+	const statsSectionLines = 8 // "STATISTICS" header + seven stat rows
+	headLines := lipgloss.Height(strings.TrimRight(head.String(), "\n"))
+	showVenue := statsAvailable && details.Venue != "" && !showMatchInfo &&
+		(height <= 0 || headLines+1+statsSectionLines+1 <= height)
+	if showVenue {
 		headLine(mutedStyle.Render(truncate(details.Venue, textWidth)))
 	}
 
@@ -347,7 +351,13 @@ func (m Model) renderDetailContent(width, height int) string {
 		body = lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 	}
 
-	return strings.TrimRight(head.String(), "\n") + "\n\n" + body
+	headStr := strings.TrimRight(head.String(), "\n")
+	headLineCount := lipgloss.Height(headStr)
+	bodySep := "\n\n"
+	if height > 0 && headLineCount+1+statsSectionLines > height {
+		bodySep = "\n"
+	}
+	return headStr + bodySep + body
 }
 
 // renderMatchInfo shows the key facts about an upcoming fixture (competition,
@@ -639,21 +649,28 @@ func minuteValue(clock string) int {
 }
 
 func renderStatsColumn(stats types.MatchStatistics, width int) string {
-	center := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
+	const valueWidth = 5
+	// Fit the longest full label ("Possession") so nothing is truncated, but
+	// shrink the column on narrow panes so the bar always keeps a usable width.
+	labelWidth := clamp(width-2*valueWidth-8, 6, 10)
+	barWidth := max(6, min(18, width-labelWidth-2*valueWidth-4))
+	blockWidth := labelWidth + valueWidth + 1 + barWidth + 1 + valueWidth
 
-	statWidth := max(16, width-2)
+	center := lipgloss.NewStyle().Width(width).Align(lipgloss.Center)
+	header := lipgloss.NewStyle().Width(blockWidth).Align(lipgloss.Center).
+		Render(tableHeaderStyle.Render("STATISTICS"))
+
 	rows := []string{
-		statBar("Possession", stats.PossessionHome, stats.PossessionAway, "%", statWidth),
-		statBar("Shots", stats.ShotsHome, stats.ShotsAway, "", statWidth),
-		statBar("On Target", stats.ShotsOnTargetHome, stats.ShotsOnTargetAway, "", statWidth),
-		statBar("Corners", stats.CornersHome, stats.CornersAway, "", statWidth),
-		statBar("Fouls", stats.FoulsHome, stats.FoulsAway, "", statWidth),
-		statBar("Yellows", stats.YellowCardsHome, stats.YellowCardsAway, "", statWidth),
-		statBar("Reds", stats.RedCardsHome, stats.RedCardsAway, "", statWidth),
+		statBar("Possession", stats.PossessionHome, stats.PossessionAway, "%", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Shots", stats.ShotsHome, stats.ShotsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("On Target", stats.ShotsOnTargetHome, stats.ShotsOnTargetAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Corners", stats.CornersHome, stats.CornersAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Fouls", stats.FoulsHome, stats.FoulsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Yellows", stats.YellowCardsHome, stats.YellowCardsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
+		statBar("Reds", stats.RedCardsHome, stats.RedCardsAway, "", barWidth, valueWidth, labelWidth, blockWidth),
 	}
 
-	return center.Render(tableHeaderStyle.Render("STATISTICS")) + "\n" +
-		center.Render(strings.Join(rows, "\n"))
+	return center.Render(header) + "\n" + center.Render(strings.Join(rows, "\n"))
 }
 
 const bigDigitHeight = 5
@@ -822,22 +839,41 @@ func dayLabel(day time.Time) string {
 	}
 }
 
-func statBar(label string, home, away int, suffix string, width int) string {
-	total := max(1, home+away)
-	labelWidth := min(16, max(10, width/4))
-	barWidth := max(8, min(24, width-labelWidth-14))
-	homeWidth := max(0, min(barWidth, home*barWidth/total))
-	awayWidth := max(0, barWidth-homeWidth)
-	bar := tableHeaderStyle.Render(strings.Repeat("=", homeWidth)) + mutedStyle.Render(strings.Repeat("-", awayWidth))
-
-	return fmt.Sprintf(
-		"%-*s %4s %s %-4s",
-		labelWidth,
-		label,
-		fmt.Sprintf("%d%s", home, suffix),
-		bar,
-		fmt.Sprintf("%d%s", away, suffix),
+func statBar(label string, home, away int, suffix string, barWidth, valueWidth, labelWidth, blockWidth int) string {
+	homeSeg, awaySeg := statBarSegments(home, away, barWidth)
+	bar := lipgloss.NewStyle().Width(barWidth).Render(
+		tableHeaderStyle.Render(strings.Repeat("=", homeSeg)) +
+			mutedStyle.Render(strings.Repeat("-", awaySeg)),
 	)
+
+	labelCol := lipgloss.NewStyle().Width(labelWidth).Align(lipgloss.Right).
+		Render(mutedStyle.Render(truncate(label, labelWidth)))
+	homeVal := lipgloss.NewStyle().Width(valueWidth).Align(lipgloss.Right).
+		Render(fmt.Sprintf("%d%s", home, suffix))
+	awayVal := lipgloss.NewStyle().Width(valueWidth).Align(lipgloss.Left).
+		Render(fmt.Sprintf("%d%s", away, suffix))
+	row := lipgloss.JoinHorizontal(lipgloss.Top, labelCol, homeVal, " ", bar, " ", awayVal)
+
+	return lipgloss.NewStyle().Width(blockWidth).Align(lipgloss.Center).Render(row)
+}
+
+// statBarSegments splits a fixed-width bar between home (left) and away (right).
+// Equal values always meet in the exact centre; zero totals show an empty bar.
+func statBarSegments(home, away, barWidth int) (homeSeg, awaySeg int) {
+	total := home + away
+	if total == 0 {
+		homeSeg = barWidth / 2
+		return homeSeg, barWidth - homeSeg
+	}
+	if home == away {
+		homeSeg = barWidth / 2
+		return homeSeg, barWidth - homeSeg
+	}
+	homeSeg = (home*barWidth + total/2) / total
+	if homeSeg > barWidth {
+		homeSeg = barWidth
+	}
+	return homeSeg, barWidth - homeSeg
 }
 
 func formatMinute(match types.Match) string {

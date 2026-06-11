@@ -45,6 +45,16 @@ func main() {
 		logger,
 	)
 
+	// In SSH mode the services (and their caches) are shared across every
+	// connected session, so concurrent viewers reuse the same upstream data.
+	if cfg.SSHEnabled {
+		if err := serveSSH(cfg, matchService, standingService, logger); err != nil {
+			logger.Error("touchline ssh server exited with error", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	model := tui.NewModel(matchService, standingService, cfg.RefreshInterval)
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := program.Run(); err != nil {
