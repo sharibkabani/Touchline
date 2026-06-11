@@ -1,0 +1,226 @@
+{
+  "details": [
+    {
+      "match": {
+        "id": "esp-por-001",
+        "competition": "world-cup",
+        "group": "Group E",
+        "stage": "Group E",
+        "homeTeam": { "id": "esp", "name": "Spain" },
+        "awayTeam": { "id": "por", "name": "Portugal" },
+        "score": { "home": 3, "away": 1 },
+        "minute": 90,
+        "status": "FT",
+        "kickoff": "2026-06-10T14:00:00Z"
+      },
+      "statistics": {
+        "possessionHome": 58,
+        "possessionAway": 42,
+        "shotsHome": 15,
+        "shotsAway": 9,
+        "shotsOnTargetHome": 8,
+        "shotsOnTargetAway": 4,
+        "cornersHome": 7,
+        "cornersAway": 4,
+        "foulsHome": 10,
+        "foulsAway": 13,
+        "yellowCardsHome": 1,
+        "yellowCardsAway": 1,
+        "redCardsHome": 0,
+        "redCardsAway": 0
+      },
+      "events": [
+        { "minute": "8'", "type": "GOAL", "text": "Goal", "player": "Álvaro Morata", "team": "Spain", "home": true },
+        { "minute": "25'", "type": "PENALTY", "text": "Penalty - Scored", "player": "Cristiano Ronaldo", "team": "Portugal", "home": false },
+        { "minute": "51'", "type": "GOAL", "text": "Goal", "player": "Pedri", "team": "Spain", "home": true },
+        { "minute": "78'", "type": "GOAL", "text": "Goal", "player": "Nico Williams", "team": "Spain", "home": true },
+        { "minute": "84'", "type": "YELLOW", "text": "Yellow Card", "player": "Bruno Fernandes", "team": "Portugal", "home": false },
+        { "minute": "88'", "type": "YELLOW", "text": "Yellow Card", "player": "Rodri", "team": "Spain", "home": true }
+      ],
+      "venue": "Santiago Bernabéu, Madrid",
+      "league": "FIFA World Cup"
+    },
+    {
+      "match": {
+        "id": "bra-arg-001",
+        "competition": "world-cup",
+        "group": "Group C",
+        "stage": "Group C",
+        "homeTeam": { "id": "bra", "name": "Brazil" },
+        "awayTeam": { "id": "arg", "name": "Argentina" },
+        "score": { "home": 2, "away": 1 },
+        "minute": 67,
+        "status": "LIVE",
+        "kickoff": "2026-06-10T18:00:00Z"
+      },
+      "statistics": {
+        "possessionHome": 53,
+        "possessionAway": 47,
+        "shotsHome": 11,
+        "shotsAway": 7,
+        "shotsOnTargetHome": 5,
+        "shotsOnTargetAway": 3,
+        "cornersHome": 4,
+        "cornersAway": 3,
+        "foulsHome": 8,
+        "foulsAway": 11,
+        "yellowCardsHome": 1,
+        "yellowCardsAway": 1,
+        "redCardsHome": 0,
+        "redCardsAway": 0
+      },
+      "events": [
+        { "minute": "12'", "type": "GOAL", "text": "Goal", "player": "Vinícius Júnior", "team": "Brazil", "home": true },
+        { "minute": "34'", "type": "GOAL", "text": "Goal", "player": "Lionel Messi", "team": "Argentina", "home": false },
+        { "minute": "41'", "type": "YELLOW", "text": "Yellow Card", "player": "Rodrigo De Paul", "team": "Argentina", "home": false },
+        { "minute": "58'", "type": "PENALTY", "text": "Penalty - Scored", "player": "Neymar", "team": "Brazil", "home": true },
+        { "minute": "63'", "type": "YELLOW", "text": "Yellow Card", "player": "Casemiro", "team": "Brazil", "home": true }
+      ],
+      "venue": "Maracanã, Rio de Janeiro",
+      "league": "FIFA World Cup"
+    },
+    {
+      "match": {
+        "id": "fra-ger-001",
+        "competition": "world-cup",
+        "group": "Group D",
+        "stage": "Group D",
+        "homeTeam": { "id": "fra", "name": "France" },
+        "awayTeam": { "id": "ger", "name": "Germany" },
+        "score": { "home": 1, "away": 1 },
+        "minute": 45,
+        "status": "HT",
+        "kickoff": "2026-06-10T19:30:00Z"
+      },
+      "statistics": {
+        "possessionHome": 51,
+        "possessionAway": 49,
+        "shotsHome": 6,
+        "shotsAway": 5,
+        "shotsOnTargetHome": 3,
+        "shotsOnTargetAway": 2,
+        "cornersHome": 2,
+        "cornersAway": 3,
+        "foulsHome": 5,
+        "foulsAway": 6,
+        "yellowCardsHome": 0,
+        "yellowCardsAway": 1,
+        "redCardsHome": 0,
+        "redCardsAway": 0
+      },
+      "events": [
+        { "minute": "22'", "type": "GOAL", "text": "Goal", "player": "Kylian Mbappé", "team": "France", "home": true },
+        { "minute": "39'", "type": "GOAL", "text": "Goal", "player": "Jamal Musiala", "team": "Germany", "home": false },
+        { "minute": "45'", "type": "YELLOW", "text": "Yellow Card", "player": "Antonio Rüdiger", "team": "Germany", "home": false }
+      ],
+      "venue": "Stade de France, Paris",
+      "league": "FIFA World Cup"
+    },
+    {
+      "match": {
+        "id": "eng-ned-001",
+        "competition": "world-cup",
+        "group": "Group F",
+        "stage": "Group F",
+        "homeTeam": { "id": "eng", "name": "England" },
+        "awayTeam": { "id": "ned", "name": "Netherlands" },
+        "score": { "home": 0, "away": 0 },
+        "minute": 0,
+        "status": "SCHEDULED",
+        "kickoff": "2026-06-10T22:00:00Z"
+      },
+      "statistics": {
+        "possessionHome": 0,
+        "possessionAway": 0,
+        "shotsHome": 0,
+        "shotsAway": 0,
+        "shotsOnTargetHome": 0,
+        "shotsOnTargetAway": 0,
+        "cornersHome": 0,
+        "cornersAway": 0,
+        "foulsHome": 0,
+        "foulsAway": 0,
+        "yellowCardsHome": 0,
+        "yellowCardsAway": 0,
+        "redCardsHome": 0,
+        "redCardsAway": 0
+      },
+      "events": [],
+      "venue": "Wembley Stadium, London",
+      "league": "FIFA World Cup",
+      "homeLineup": {
+        "formation": "4-2-3-1",
+        "players": [
+          { "name": "Jordan Pickford", "number": 1, "position": "G", "starter": true },
+          { "name": "Kyle Walker", "number": 2, "position": "RB", "starter": true },
+          { "name": "John Stones", "number": 5, "position": "CB", "starter": true },
+          { "name": "Marc Guéhi", "number": 6, "position": "CB", "starter": true },
+          { "name": "Luke Shaw", "number": 3, "position": "LB", "starter": true },
+          { "name": "Declan Rice", "number": 4, "position": "DM", "starter": true },
+          { "name": "Jude Bellingham", "number": 10, "position": "CM", "starter": true },
+          { "name": "Bukayo Saka", "number": 7, "position": "RW", "starter": true },
+          { "name": "Phil Foden", "number": 11, "position": "AM", "starter": true },
+          { "name": "Cole Palmer", "number": 24, "position": "LW", "starter": true },
+          { "name": "Harry Kane", "number": 9, "position": "F", "starter": true },
+          { "name": "Aaron Ramsdale", "number": 13, "position": "SUB", "starter": false },
+          { "name": "Ezri Konsa", "number": 14, "position": "SUB", "starter": false },
+          { "name": "Anthony Gordon", "number": 17, "position": "SUB", "starter": false },
+          { "name": "Ollie Watkins", "number": 18, "position": "SUB", "starter": false }
+        ]
+      },
+      "awayLineup": {
+        "formation": "4-3-3",
+        "players": [
+          { "name": "Bart Verbruggen", "number": 1, "position": "G", "starter": true },
+          { "name": "Denzel Dumfries", "number": 22, "position": "RB", "starter": true },
+          { "name": "Virgil van Dijk", "number": 4, "position": "CB", "starter": true },
+          { "name": "Stefan de Vrij", "number": 6, "position": "CB", "starter": true },
+          { "name": "Nathan Aké", "number": 5, "position": "LB", "starter": true },
+          { "name": "Frenkie de Jong", "number": 21, "position": "CM", "starter": true },
+          { "name": "Tijjani Reijnders", "number": 14, "position": "CM", "starter": true },
+          { "name": "Ryan Gravenberch", "number": 8, "position": "CM", "starter": true },
+          { "name": "Xavi Simons", "number": 7, "position": "RW", "starter": true },
+          { "name": "Memphis Depay", "number": 10, "position": "F", "starter": true },
+          { "name": "Cody Gakpo", "number": 11, "position": "LW", "starter": true },
+          { "name": "Mark Flekken", "number": 23, "position": "SUB", "starter": false },
+          { "name": "Micky van de Ven", "number": 3, "position": "SUB", "starter": false },
+          { "name": "Wout Weghorst", "number": 19, "position": "SUB", "starter": false },
+          { "name": "Donyell Malen", "number": 18, "position": "SUB", "starter": false }
+        ]
+      }
+    },
+    {
+      "match": {
+        "id": "arg-mex-001",
+        "competition": "world-cup",
+        "group": "Group A",
+        "stage": "Group A",
+        "homeTeam": { "id": "arg", "name": "Argentina" },
+        "awayTeam": { "id": "mex", "name": "Mexico" },
+        "score": { "home": 0, "away": 0 },
+        "minute": 0,
+        "status": "SCHEDULED",
+        "kickoff": "2026-06-11T01:00:00Z"
+      },
+      "statistics": {
+        "possessionHome": 0,
+        "possessionAway": 0,
+        "shotsHome": 0,
+        "shotsAway": 0,
+        "shotsOnTargetHome": 0,
+        "shotsOnTargetAway": 0,
+        "cornersHome": 0,
+        "cornersAway": 0,
+        "foulsHome": 0,
+        "foulsAway": 0,
+        "yellowCardsHome": 0,
+        "yellowCardsAway": 0,
+        "redCardsHome": 0,
+        "redCardsAway": 0
+      },
+      "events": [],
+      "venue": "Estadio Azteca, Mexico City",
+      "league": "FIFA World Cup"
+    }
+  ]
+}

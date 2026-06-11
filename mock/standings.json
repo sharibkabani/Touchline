@@ -1,0 +1,118 @@
+{
+  "groups": [
+    {
+      "group": "Group A",
+      "rows": [
+        {
+          "position": 1,
+          "team": {
+            "id": "arg",
+            "name": "Argentina"
+          },
+          "played": 2,
+          "won": 2,
+          "drawn": 0,
+          "lost": 0,
+          "goalDifference": 4,
+          "points": 6
+        },
+        {
+          "position": 2,
+          "team": {
+            "id": "mex",
+            "name": "Mexico"
+          },
+          "played": 2,
+          "won": 1,
+          "drawn": 1,
+          "lost": 0,
+          "goalDifference": 1,
+          "points": 4
+        },
+        {
+          "position": 3,
+          "team": {
+            "id": "pol",
+            "name": "Poland"
+          },
+          "played": 2,
+          "won": 0,
+          "drawn": 1,
+          "lost": 1,
+          "goalDifference": -2,
+          "points": 1
+        },
+        {
+          "position": 4,
+          "team": {
+            "id": "ksa",
+            "name": "Saudi Arabia"
+          },
+          "played": 2,
+          "won": 0,
+          "drawn": 0,
+          "lost": 2,
+          "goalDifference": -3,
+          "points": 0
+        }
+      ]
+    },
+    {
+      "group": "Group B",
+      "rows": [
+        {
+          "position": 1,
+          "team": {
+            "id": "bra",
+            "name": "Brazil"
+          },
+          "played": 2,
+          "won": 1,
+          "drawn": 1,
+          "lost": 0,
+          "goalDifference": 3,
+          "points": 4
+        },
+        {
+          "position": 2,
+          "team": {
+            "id": "esp",
+            "name": "Spain"
+          },
+          "played": 2,
+          "won": 1,
+          "drawn": 1,
+          "lost": 0,
+          "goalDifference": 2,
+          "points": 4
+        },
+        {
+          "position": 3,
+          "team": {
+            "id": "jpn",
+            "name": "Japan"
+          },
+          "played": 2,
+          "won": 1,
+          "drawn": 0,
+          "lost": 1,
+          "goalDifference": 0,
+          "points": 3
+        },
+        {
+          "position": 4,
+          "team": {
+            "id": "can",
+            "name": "Canada"
+          },
+          "played": 2,
+          "won": 0,
+          "drawn": 0,
+          "lost": 2,
+          "goalDifference": -5,
+          "points": 0
+        }
+      ]
+    }
+  ]
+}
