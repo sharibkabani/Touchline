@@ -19,6 +19,7 @@ const (
 	defaultCacheTTL        = 25 * time.Second
 	defaultSSHAddress      = "localhost:23234"
 	defaultSSHHostKeyPath  = ".ssh/touchline_ed25519"
+	defaultTimezone        = "America/New_York"
 )
 
 type Config struct {
@@ -29,6 +30,9 @@ type Config struct {
 	RefreshInterval time.Duration
 	CacheTTL        time.Duration
 	LogLevel        slog.Level
+	// Timezone is the IANA name used to group matches by day and format kickoff
+	// times, so a UTC host still shows the correct match day.
+	Timezone string
 
 	// SSHEnabled serves the TUI over SSH instead of running it locally.
 	SSHEnabled     bool
@@ -49,6 +53,7 @@ func Load() (Config, error) {
 		RefreshInterval: getDurationEnv("TOUCHLINE_REFRESH_INTERVAL", defaultRefreshInterval),
 		CacheTTL:        getDurationEnv("TOUCHLINE_CACHE_TTL", defaultCacheTTL),
 		LogLevel:        getLogLevelEnv("TOUCHLINE_LOG_LEVEL", slog.LevelInfo),
+		Timezone:        getEnv("TOUCHLINE_TIMEZONE", defaultTimezone),
 
 		SSHEnabled:     getBoolEnv("TOUCHLINE_SSH", false),
 		SSHAddress:     getEnv("TOUCHLINE_SSH_ADDR", defaultSSHAddress),

@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	// Embed the IANA timezone database so time.LoadLocation works even on minimal
+	// hosts (e.g. the Alpine container on Fly.io) that ship without tzdata.
+	_ "time/tzdata"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -25,6 +28,10 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: cfg.LogLevel,
 	}))
+
+	// Group matches by day in a fixed audience timezone (default US Eastern) so a
+	// UTC host doesn't roll the day over at the wrong time.
+	tui.SetTimezone(cfg.Timezone)
 
 	provider, err := buildProvider(cfg)
 	if err != nil {

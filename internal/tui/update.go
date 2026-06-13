@@ -242,7 +242,32 @@ func (m Model) selectedMatch() (types.Match, bool) {
 	return matches[m.selected], true
 }
 
+// displayLocation is the timezone used for all day grouping ("Today"/"Yesterday")
+// and kickoff formatting. It defaults to US Eastern so a UTC host (such as the
+// SSH server on Fly.io) still rolls over the match day at the right moment for
+// the audience instead of at midnight UTC.
+var displayLocation = mustLoadLocation("America/New_York")
+
+func mustLoadLocation(name string) *time.Location {
+	if loc, err := time.LoadLocation(name); err == nil {
+		return loc
+	}
+	return time.Local
+}
+
+// SetTimezone overrides the display timezone by IANA name (e.g.
+// "America/New_York"). Empty or unknown names leave the current location in
+// place.
+func SetTimezone(name string) {
+	if name == "" {
+		return
+	}
+	if loc, err := time.LoadLocation(name); err == nil {
+		displayLocation = loc
+	}
+}
+
 func startOfDay(t time.Time) time.Time {
-	local := t.Local()
+	local := t.In(displayLocation)
 	return time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, local.Location())
 }

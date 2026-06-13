@@ -122,11 +122,13 @@ const (
 // renderPane frames content in the bordered box, sizing it so exactly textWidth
 // columns are available for content. This prevents lipgloss from auto-wrapping
 // (and thus growing) the pane, and makes the box exactly textWidth+paneFrameWidth
-// columns wide.
-func (m Model) renderPane(content string, textWidth, height int) string {
+// columns wide. vAlign positions content shorter than the box vertically (e.g.
+// Top for the scrolling match list, Center for the detail card).
+func (m Model) renderPane(content string, textWidth, height int, vAlign lipgloss.Position) string {
 	return paneStyle.
 		Width(textWidth + panePadWidth).
 		Height(height).
+		AlignVertical(vAlign).
 		Render(clampHeight(content, height))
 }
 
@@ -140,8 +142,8 @@ func (m Model) renderDashboardBody(availableRows int) string {
 		// Stack the panes but keep both boxes the same height so they read as a
 		// matching pair just like the side-by-side layout.
 		paneHeight := max(5, (availableRows-2)/2)
-		list := m.renderPane(m.renderMatchListPane(textWidth, paneHeight), textWidth, paneHeight)
-		details := m.renderPane(m.renderDetailContent(textWidth, paneHeight), textWidth, paneHeight)
+		list := m.renderPane(m.renderMatchListPane(textWidth, paneHeight), textWidth, paneHeight, lipgloss.Top)
+		details := m.renderPane(m.renderDetailContent(textWidth, paneHeight), textWidth, paneHeight, lipgloss.Center)
 		return lipgloss.JoinVertical(lipgloss.Center, list, details)
 	}
 
@@ -151,8 +153,8 @@ func (m Model) renderDashboardBody(availableRows int) string {
 	rightTextWidth := max(20, rightOuterWidth-paneFrameWidth)
 	// Both panes share the exact same height so the rectangles are identical.
 	paneHeight := availableRows
-	left := m.renderPane(m.renderMatchListPane(leftTextWidth, paneHeight), leftTextWidth, paneHeight)
-	right := m.renderPane(m.renderDetailContent(rightTextWidth, paneHeight), rightTextWidth, paneHeight)
+	left := m.renderPane(m.renderMatchListPane(leftTextWidth, paneHeight), leftTextWidth, paneHeight, lipgloss.Top)
+	right := m.renderPane(m.renderDetailContent(rightTextWidth, paneHeight), rightTextWidth, paneHeight, lipgloss.Center)
 
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, " ", right)
 }
@@ -423,7 +425,7 @@ func renderMatchInfo(match types.Match, details types.MatchDetails, width int) s
 		rows = append(rows, infoRow{"Stage", match.Stage})
 	}
 	if !match.Kickoff.IsZero() {
-		rows = append(rows, infoRow{"Kickoff", match.Kickoff.Local().Format("Mon, Jan 2 · 15:04")})
+		rows = append(rows, infoRow{"Kickoff", match.Kickoff.In(displayLocation).Format("Mon, Jan 2 · 15:04")})
 	}
 
 	arena, location := splitVenue(details.Venue)
@@ -1010,7 +1012,7 @@ func formatKickoff(match types.Match) string {
 	if match.Kickoff.IsZero() {
 		return "KO --:--"
 	}
-	return "KO " + match.Kickoff.Local().Format("15:04")
+	return "KO " + match.Kickoff.In(displayLocation).Format("15:04")
 }
 
 func clamp(value, low, high int) int {
