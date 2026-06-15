@@ -15,7 +15,7 @@ import (
 const (
 	defaultMockDir         = "mock"
 	defaultProvider        = "espn"
-	defaultRefreshInterval = 30 * time.Second
+	defaultRefreshInterval = 10 * time.Second
 	defaultCacheTTL        = 25 * time.Second
 	defaultSSHAddress      = "localhost:23234"
 	defaultSSHHostKeyPath  = ".ssh/touchline_ed25519"
