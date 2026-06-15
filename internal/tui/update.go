@@ -36,7 +36,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.nextTopLevelView()
 			m.err = nil
 			m.ensureSelectedVisible()
-		case "left", "h":
+		case "l", "L":
+			// Toggle the detail pane between stats/timeline and the on-pitch
+			// formation. Only meaningful on the live-matches dashboard; the
+			// renderer falls back to stats when no lineup is available.
+			if m.currentView == ViewLiveMatches {
+				m.showLineups = !m.showLineups
+			} else {
+				m.viewport, cmd = m.viewport.Update(msg)
+			}
+		case "left":
 			if m.currentView == ViewLiveMatches {
 				m.shiftSelectedDate(-1)
 				m.loading = true
@@ -44,7 +53,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.loadDashboard(false)
 			}
 			m.viewport, cmd = m.viewport.Update(msg)
-		case "right", "l":
+		case "right":
 			if m.currentView == ViewLiveMatches {
 				m.shiftSelectedDate(1)
 				m.loading = true

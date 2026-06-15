@@ -105,6 +105,13 @@ func (m Model) renderFooter() string {
 	help := "left/right day | up/down match | tab standings | r refresh | q quit"
 	if m.currentView != ViewLiveMatches {
 		help = "tab matches | up/down scroll | r refresh | q quit"
+	} else if m.details.Match.Status != types.StatusScheduled &&
+		(len(m.details.HomeLineup.Players) > 0 || len(m.details.AwayLineup.Players) > 0) {
+		toggle := "l lineup"
+		if m.showLineups {
+			toggle = "l stats"
+		}
+		help = "left/right day | up/down match | " + toggle + " | tab standings | r refresh | q quit"
 	}
 
 	if m.err != nil {
@@ -396,6 +403,19 @@ func (m Model) renderDetailContent(width, height int) string {
 		bodyBudget = max(1, height-headLineCount-2)
 	}
 
+	// L toggles the on-pitch formation in place of the timeline/stats. It falls
+	// through to the stats view when no usable lineup is available.
+	if m.showLineups {
+		if pitch, ok := renderFormationPitch(details.HomeLineup, details.AwayLineup,
+			match.HomeTeam.Name, match.AwayTeam.Name, details.Events, width, bodyBudget); ok {
+			sep := "\n\n"
+			if height > 0 && headLineCount+2+lipgloss.Height(pitch) > height {
+				sep = "\n"
+			}
+			return headStr + sep + pitch
+		}
+	}
+
 	compact := bodyBudget > 0 && 2*len(details.Events) > bodyBudget
 
 	statsCol := renderStatsColumn(stats, colWidth)
@@ -632,6 +652,347 @@ func formatLineupPlayer(player types.LineupPlayer, width int) string {
 		row += " " + position
 	}
 	return row
+}
+
+// renderFormationPitch draws both starting XIs on a single vertical pitch: the
+// away side at the top (attacking downward) and the home side at the bottom
+// (attacking up toward the halfway line), mirroring how a match is shown on TV.
+// It returns ok=false when either lineup can't be resolved into a valid
+// formation, so the caller can fall back to the stats view.
+func renderFormationPitch(home, away types.TeamLineup, homeName, awayName string, events []types.MatchEvent, width, maxHeight int) (string, bool) {
+	inner := clamp(width-4, 22, 60)
+	if width-4 < 22 {
+		return "", false // too narrow to lay out players legibly
+	}
+
+	homeGK, homeRows, homeOK := arrangeFormation(home)
+	awayGK, awayRows, awayOK := arrangeFormation(away)
+	if !homeOK || !awayOK {
+		return "", false
+	}
+
+	homeTally := tallyContributions(events, true)
+	awayTally := tallyContributions(events, false)
+
+	label := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center)
+	teamLabel := func(name, formation string) string {
+		s := scoreTeamStyle.Render(truncate(name, inner))
+		if formation != "" {
+			s += "  " + tableHeaderStyle.Render(formation)
+		}
+		return label.Render(s)
+	}
+
+	// Top (away) reads goalkeeper -> defence -> attack; bottom (home) reads
+	// attack -> defence -> goalkeeper so both teams attack the centre line.
+	// rowTally tracks which side each row belongs to for goal/assist lookups.
+	var rows [][]types.LineupPlayer
+	var rowTally []map[string]playerTally
+	addRow := func(row []types.LineupPlayer, tally map[string]playerTally) {
+		rows = append(rows, row)
+		rowTally = append(rowTally, tally)
+	}
+
+	addRow([]types.LineupPlayer{awayGK}, awayTally)
+	for _, row := range awayRows {
+		addRow(row, awayTally)
+	}
+	half := len(rows) // halfway line sits between the two teams
+	for i := len(homeRows) - 1; i >= 0; i-- {
+		addRow(homeRows[i], homeTally)
+	}
+	addRow([]types.LineupPlayer{homeGK}, homeTally)
+
+	// Spread rows vertically with a blank line between them when the pane is
+	// tall enough; otherwise pack them tightly so nothing is clipped.
+	gap := 0
+	needed := 2 /*labels*/ + len(rows) + 1 /*halfway*/
+	if maxHeight <= 0 || needed+(len(rows)-1) <= maxHeight {
+		gap = 1
+	}
+
+	halfwayLine := pitchLineStyle.Render(strings.Repeat("╌", inner))
+	if inner >= 3 {
+		mid := (inner - 1) / 2
+		halfwayLine = pitchLineStyle.Render(
+			strings.Repeat("╌", mid) + "●" + strings.Repeat("╌", inner-mid-1))
+	}
+
+	var lines []string
+	lines = append(lines, teamLabel(awayName, away.Formation))
+	for i, row := range rows {
+		if i == half {
+			lines = append(lines, halfwayLine)
+		}
+		if gap == 1 && i > 0 && i != half {
+			lines = append(lines, "")
+		}
+		lines = append(lines, pitchRow(row, rowTally[i], inner))
+	}
+	lines = append(lines, teamLabel(homeName, home.Formation))
+
+	// Width includes the style's horizontal padding (1 col each side), so set it
+	// to inner+2 to expose exactly inner columns and avoid wrapping the rows.
+	pitch := pitchBorderStyle.Width(inner + 2).Render(strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(pitch), true
+}
+
+// arrangeFormation splits a starting XI into pitch rows. The formation string
+// (e.g. "4-2-3-1") gives the row sizes from defence to attack; players are
+// bucketed by the depth implied by their position, then ordered left-to-right
+// within each row. The goalkeeper is returned separately. ok is false when the
+// data doesn't add up to a clean XI (so the caller can fall back).
+func arrangeFormation(lineup types.TeamLineup) (gk types.LineupPlayer, rows [][]types.LineupPlayer, ok bool) {
+	counts := parseFormation(lineup.Formation)
+	if len(counts) == 0 {
+		return gk, nil, false
+	}
+
+	var keepers, outfield []types.LineupPlayer
+	for _, p := range lineup.Players {
+		if !p.Starter {
+			continue
+		}
+		if core, _ := splitPos(p.Position); core == "G" || core == "GK" {
+			keepers = append(keepers, p)
+		} else {
+			outfield = append(outfield, p)
+		}
+	}
+
+	total := 0
+	for _, c := range counts {
+		total += c
+	}
+	if len(keepers) != 1 || len(outfield) != total {
+		return gk, nil, false
+	}
+
+	gk = keepers[0]
+	sort.SliceStable(outfield, func(i, j int) bool {
+		return verticalRank(outfield[i].Position) < verticalRank(outfield[j].Position)
+	})
+
+	idx := 0
+	for _, c := range counts {
+		row := make([]types.LineupPlayer, c)
+		copy(row, outfield[idx:idx+c])
+		idx += c
+		sort.SliceStable(row, func(i, j int) bool {
+			return horizontalRank(row[i].Position) < horizontalRank(row[j].Position)
+		})
+		rows = append(rows, row)
+	}
+	return gk, rows, true
+}
+
+// parseFormation turns "4-2-3-1" into [4 2 3 1], ignoring empty/zero segments.
+func parseFormation(formation string) []int {
+	if formation == "" {
+		return nil
+	}
+	var counts []int
+	for _, part := range strings.Split(formation, "-") {
+		if n := atoiTUI(strings.TrimSpace(part)); n > 0 {
+			counts = append(counts, n)
+		}
+	}
+	return counts
+}
+
+// splitPos breaks an ESPN position code like "CD-L" into its core ("CD") and
+// side ("L"). Codes without a side return an empty side.
+func splitPos(pos string) (core, side string) {
+	p := strings.ToUpper(strings.TrimSpace(pos))
+	if i := strings.IndexByte(p, '-'); i >= 0 {
+		return p[:i], p[i+1:]
+	}
+	return p, ""
+}
+
+// verticalRank scores a position by how far up the pitch it sits (0 = keeper,
+// rising through defence, midfield and attack), used to bucket players into the
+// formation's rows from the back.
+func verticalRank(pos string) float64 {
+	core, _ := splitPos(pos)
+	switch core {
+	case "G", "GK":
+		return 0
+	case "DM", "CDM", "LDM", "RDM":
+		return 2
+	case "AM", "CAM":
+		return 4
+	case "LW", "RW", "W", "LF", "RF":
+		return 4.5
+	case "F", "CF", "ST", "S", "SS", "FW":
+		return 5
+	case "CB", "CD", "SW", "LB", "RB", "LWB", "RWB", "WB", "LCB", "RCB":
+		return 1
+	default:
+		// Remaining central/wide midfielders (CM, LM, RM, M, ...).
+		if strings.HasPrefix(core, "D") {
+			return 1 // unknown defender code
+		}
+		return 3
+	}
+}
+
+// horizontalRank scores a position from left (low) to right (high) using the
+// position's side suffix and any L/R prefix, so each row reads naturally.
+func horizontalRank(pos string) float64 {
+	core, side := splitPos(pos)
+	base := 2.0 // central
+	switch {
+	case strings.HasPrefix(core, "L"):
+		base = 0.5
+	case strings.HasPrefix(core, "R"):
+		base = 3.5
+	}
+	switch side {
+	case "L":
+		base -= 1
+	case "LC":
+		base -= 0.5
+	case "RC":
+		base += 0.5
+	case "R":
+		base += 1
+	}
+	return base
+}
+
+// pitchRow renders one line of evenly spaced player tokens spanning inner cols.
+func pitchRow(players []types.LineupPlayer, tally map[string]playerTally, inner int) string {
+	n := len(players)
+	if n == 0 {
+		return strings.Repeat(" ", inner)
+	}
+	var b strings.Builder
+	used := 0
+	for i, p := range players {
+		w := inner / n
+		if i == n-1 {
+			w = inner - used
+		}
+		used += w
+		b.WriteString(pitchToken(p, tally[normalizeName(p.Name)], w))
+	}
+	return b.String()
+}
+
+// pitchToken centres a single player (accent number + short name, plus goal and
+// assist icons) in cellW cols, degrading to just the number then dropping the
+// name when the cell is too narrow.
+func pitchToken(p types.LineupPlayer, t playerTally, cellW int) string {
+	cell := lipgloss.NewStyle().Width(cellW).Align(lipgloss.Center)
+
+	num := ""
+	if p.Number > 0 {
+		num = fmt.Sprintf("%d", p.Number)
+	}
+
+	suffix := ""
+	if icons := contribIcons(t); icons != "" {
+		suffix = " " + icons
+	}
+
+	nameMax := cellW - 2 - len(num) - 1 - lipgloss.Width(suffix)
+	name := ""
+	if nameMax >= 1 {
+		name = truncate(lastName(p.Name), nameMax)
+	}
+
+	token := pitchNumberStyle.Render(num)
+	if name != "" {
+		if num != "" {
+			token += " "
+		}
+		token += pitchNameStyle.Render(name)
+	}
+	token += suffix
+	return cell.Render(token)
+}
+
+// playerTally counts a player's goals and assists in a match.
+type playerTally struct {
+	goals   int
+	assists int
+}
+
+// tallyContributions counts goals and assists per player for one side. Own goals
+// are excluded so a player is never credited a goal scored into their own net.
+func tallyContributions(events []types.MatchEvent, home bool) map[string]playerTally {
+	tally := make(map[string]playerTally)
+	for _, e := range events {
+		if e.Home != home {
+			continue
+		}
+		if e.Type != types.EventGoal && e.Type != types.EventPenalty {
+			continue
+		}
+		if e.Player != "" {
+			key := normalizeName(e.Player)
+			t := tally[key]
+			t.goals++
+			tally[key] = t
+		}
+		if e.Assist != "" {
+			key := normalizeName(e.Assist)
+			t := tally[key]
+			t.assists++
+			tally[key] = t
+		}
+	}
+	return tally
+}
+
+// contribIcons renders a player's goals as ⚽ and assists as 👟, with a ×N
+// multiplier when there is more than one (e.g. "⚽×2 👟").
+func contribIcons(t playerTally) string {
+	parts := make([]string, 0, 2)
+	if t.goals > 0 {
+		s := "⚽"
+		if t.goals > 1 {
+			s += fmt.Sprintf("×%d", t.goals)
+		}
+		parts = append(parts, s)
+	}
+	if t.assists > 0 {
+		s := "👟"
+		if t.assists > 1 {
+			s += fmt.Sprintf("×%d", t.assists)
+		}
+		parts = append(parts, s)
+	}
+	return strings.Join(parts, " ")
+}
+
+// normalizeName lower-cases and trims a player name so timeline and lineup
+// spellings match when tallying contributions.
+func normalizeName(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
+}
+
+// lastName returns the final word of a full name (e.g. "Mohamed Toure" ->
+// "Toure"), which reads best in the tight space of a pitch token.
+func lastName(name string) string {
+	fields := strings.Fields(name)
+	if len(fields) == 0 {
+		return name
+	}
+	return fields[len(fields)-1]
+}
+
+// atoiTUI is a small local int parser to avoid importing strconv here.
+func atoiTUI(s string) int {
+	n := 0
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0
+		}
+		n = n*10 + int(r-'0')
+	}
+	return n
 }
 
 // renderTimeline lays out goals and cards as a two-sided vertical timeline:

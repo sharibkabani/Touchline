@@ -130,6 +130,23 @@ var (
 
 	groupHeaderStyle = lipgloss.NewStyle().
 				Foreground(dim)
+
+	// Formation pitch: a green-bordered field with bold accent jersey numbers,
+	// white player names, and dimmed pitch markings (halfway line, centre spot).
+	pitchBorderStyle = lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(green).
+				Padding(0, 1)
+
+	pitchNumberStyle = lipgloss.NewStyle().
+				Foreground(green).
+				Bold(true)
+
+	pitchNameStyle = lipgloss.NewStyle().
+			Foreground(white)
+
+	pitchLineStyle = lipgloss.NewStyle().
+			Foreground(dim)
 )
 
 func statusBadge(status types.MatchStatus) string {

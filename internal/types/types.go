@@ -82,8 +82,10 @@ type MatchEvent struct {
 	Type   MatchEventType `json:"type"`
 	Text   string         `json:"text"`
 	Player string         `json:"player"`
-	Team   string         `json:"team"`
-	Home   bool           `json:"home"`
+	// Assist is the player credited with the assist on a goal, when known.
+	Assist string `json:"assist,omitempty"`
+	Team   string `json:"team"`
+	Home   bool   `json:"home"`
 }
 
 // LineupPlayer is a single entry in a team sheet. Number and Position are best

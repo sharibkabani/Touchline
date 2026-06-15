@@ -36,6 +36,10 @@ type Model struct {
 	err             error
 	lastUpdated     time.Time
 
+	// showLineups toggles the right pane (for ongoing/finished matches) between
+	// the timeline + stats view and the on-pitch formation view.
+	showLineups bool
+
 	viewport viewport.Model
 	width    int
 	height   int

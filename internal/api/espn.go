@@ -232,6 +232,18 @@ func buildCommentaryEvents(items []espnCommentary, homeName, awayName string) []
 			}
 		}
 
+		// On a goal the second participant (when present) is the assister; fall
+		// back to parsing "Assisted by ..." out of the commentary prose.
+		assist := ""
+		if eventType == types.EventGoal || eventType == types.EventPenalty {
+			if len(item.Play.Participants) > 1 {
+				assist = item.Play.Participants[1].Athlete.DisplayName
+			}
+			if assist == "" {
+				assist = parseAssist(item.Text)
+			}
+		}
+
 		minute := item.Time.DisplayValue
 		key := string(eventType) + "|" + minute + "|" + player
 		if seen[key] {
@@ -244,6 +256,7 @@ func buildCommentaryEvents(items []espnCommentary, homeName, awayName string) []
 			Type:   eventType,
 			Text:   item.Text,
 			Player: player,
+			Assist: assist,
 			Team:   team,
 			Home:   isHomeTeam(team, homeName, awayName),
 		})
@@ -313,6 +326,24 @@ func parseEventText(text string) (player, team string) {
 	player = prefix
 
 	return player, team
+}
+
+// parseAssist extracts the assisting player from commentary prose such as
+// "... Assisted by Florian Wirtz." or "... Assisted by Joshua Kimmich with a
+// through ball.", returning an empty string when no assist is mentioned.
+func parseAssist(text string) string {
+	const marker = "Assisted by "
+	i := strings.Index(text, marker)
+	if i < 0 {
+		return ""
+	}
+	rest := text[i+len(marker):]
+	for _, sep := range []string{" with ", " following ", " after ", "."} {
+		if j := strings.Index(rest, sep); j >= 0 {
+			rest = rest[:j]
+		}
+	}
+	return strings.TrimSpace(rest)
 }
 
 func isHomeTeam(team, homeName, awayName string) bool {
@@ -616,6 +647,14 @@ func buildEvents(details []espnDetail, homeID, homeName, awayName string) []type
 			}
 		}
 
+		assist := ""
+		if (eventType == types.EventGoal || eventType == types.EventPenalty) && len(detail.AthletesInvolved) > 1 {
+			assist = detail.AthletesInvolved[1].DisplayName
+			if assist == "" {
+				assist = detail.AthletesInvolved[1].ShortName
+			}
+		}
+
 		home := detail.Team.ID == homeID
 		team := awayName
 		if home {
@@ -627,6 +666,7 @@ func buildEvents(details []espnDetail, homeID, homeName, awayName string) []type
 			Type:   eventType,
 			Text:   detail.Type.Text,
 			Player: player,
+			Assist: assist,
 			Team:   team,
 			Home:   home,
 		})
