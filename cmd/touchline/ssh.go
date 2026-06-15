@@ -18,6 +18,7 @@ import (
 	"github.com/charmbracelet/wish/logging"
 	"github.com/muesli/termenv"
 
+	"touchline/internal/analytics"
 	"touchline/internal/config"
 	"touchline/internal/services"
 	"touchline/internal/tui"
@@ -30,6 +31,7 @@ func serveSSH(
 	cfg config.Config,
 	matchService *services.MatchService,
 	standingService *services.StandingService,
+	tracker *analytics.Tracker,
 	logger *slog.Logger,
 ) error {
 	// The TUI styles use lipgloss' global renderer, which would otherwise detect
@@ -37,19 +39,31 @@ func serveSSH(
 	// keeps the app colorful for connected SSH clients.
 	lipgloss.SetColorProfile(termenv.TrueColor)
 
+	if tracker != nil {
+		logger.Info("ssh analytics enabled (posthog)")
+	}
+
 	handler := func(sess ssh.Session) (tea.Model, []tea.ProgramOption) {
 		model := tui.NewModel(matchService, standingService, cfg.RefreshInterval)
 		return model, []tea.ProgramOption{tea.WithAltScreen()}
 	}
 
+	// Middleware executes last-listed-first, so this resolves to:
+	// logging -> activeterm -> analytics -> bubbletea. Analytics therefore only
+	// counts real interactive terminals and wraps the whole program lifetime.
+	middleware := []wish.Middleware{bubbletea.Middleware(handler)}
+	if tracker != nil {
+		middleware = append(middleware, analyticsMiddleware(tracker))
+	}
+	middleware = append(middleware,
+		activeterm.Middleware(), // require an interactive terminal
+		logging.Middleware(),
+	)
+
 	server, err := wish.NewServer(
 		wish.WithAddress(cfg.SSHAddress),
 		wish.WithHostKeyPath(cfg.SSHHostKeyPath),
-		wish.WithMiddleware(
-			bubbletea.Middleware(handler),
-			activeterm.Middleware(), // require an interactive terminal
-			logging.Middleware(),
-		),
+		wish.WithMiddleware(middleware...),
 	)
 	if err != nil {
 		return err
@@ -75,4 +89,17 @@ func serveSSH(
 		return err
 	}
 	return nil
+}
+
+// analyticsMiddleware records a PostHog event when a session starts and ends,
+// capturing connection counts and session duration.
+func analyticsMiddleware(tracker *analytics.Tracker) wish.Middleware {
+	return func(next ssh.Handler) ssh.Handler {
+		return func(sess ssh.Session) {
+			start := time.Now()
+			tracker.Connected(sess)
+			defer func() { tracker.Disconnected(sess, time.Since(start)) }()
+			next(sess)
+		}
+	}
 }

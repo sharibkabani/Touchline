@@ -38,6 +38,10 @@ type Config struct {
 	SSHEnabled     bool
 	SSHAddress     string
 	SSHHostKeyPath string
+
+	// PostHog analytics for SSH sessions (disabled when the API key is empty).
+	PostHogAPIKey string
+	PostHogHost   string
 }
 
 func Load() (Config, error) {
@@ -58,6 +62,9 @@ func Load() (Config, error) {
 		SSHEnabled:     getBoolEnv("TOUCHLINE_SSH", false),
 		SSHAddress:     getEnv("TOUCHLINE_SSH_ADDR", defaultSSHAddress),
 		SSHHostKeyPath: getEnv("TOUCHLINE_SSH_HOST_KEY_PATH", defaultSSHHostKeyPath),
+
+		PostHogAPIKey: getEnv("TOUCHLINE_POSTHOG_API_KEY", ""),
+		PostHogHost:   getEnv("TOUCHLINE_POSTHOG_HOST", ""),
 	}, nil
 }
 

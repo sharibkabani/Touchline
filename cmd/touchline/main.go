@@ -8,8 +8,11 @@ import (
 	// hosts (e.g. the Alpine container on Fly.io) that ship without tzdata.
 	_ "time/tzdata"
 
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 
+	"touchline/internal/analytics"
 	"touchline/internal/api"
 	"touchline/internal/cache"
 	"touchline/internal/config"
@@ -33,6 +36,13 @@ func main() {
 	// UTC host doesn't roll the day over at the wrong time.
 	tui.SetTimezone(cfg.Timezone)
 
+	// PostHog analytics (no-op when no API key is configured). Shared across SSH
+	// sessions; also wraps the local run so dev/usage sessions are tracked.
+	tracker, err := analytics.New(cfg.PostHogAPIKey, cfg.PostHogHost)
+	if err != nil {
+		logger.Warn("analytics disabled", "error", err)
+	}
+
 	provider, err := buildProvider(cfg)
 	if err != nil {
 		logger.Error("failed to configure provider", "error", err)
@@ -55,7 +65,9 @@ func main() {
 	// In SSH mode the services (and their caches) are shared across every
 	// connected session, so concurrent viewers reuse the same upstream data.
 	if cfg.SSHEnabled {
-		if err := serveSSH(cfg, matchService, standingService, logger); err != nil {
+		err := serveSSH(cfg, matchService, standingService, tracker, logger)
+		tracker.Close() // flush buffered events before exit
+		if err != nil {
 			logger.Error("touchline ssh server exited with error", "error", err)
 			os.Exit(1)
 		}
@@ -64,8 +76,15 @@ func main() {
 
 	model := tui.NewModel(matchService, standingService, cfg.RefreshInterval)
 	program := tea.NewProgram(model, tea.WithAltScreen())
-	if _, err := program.Run(); err != nil {
-		logger.Error("touchline exited with error", "error", err)
+
+	tracker.AppStarted()
+	start := time.Now()
+	_, runErr := program.Run()
+	tracker.AppEnded(time.Since(start))
+	tracker.Close() // flush buffered events before exit
+
+	if runErr != nil {
+		logger.Error("touchline exited with error", "error", runErr)
 		os.Exit(1)
 	}
 }

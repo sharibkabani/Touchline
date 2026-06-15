@@ -143,7 +143,9 @@ func (m Model) renderPane(content string, textWidth, height int, vAlign lipgloss
 // renderDashboardBody lays out the live match list and detail panes. It returns
 // only the panes (no banner/footer) so the caller can center the whole view.
 func (m Model) renderDashboardBody(availableRows int) string {
-	contentWidth := max(32, m.width-2)
+	// Cap the overall width so the dashboard stays a centered, well-proportioned
+	// card on very wide terminals instead of stretching edge to edge.
+	contentWidth := max(32, min(m.width-2, 150))
 
 	if contentWidth < 88 {
 		textWidth := max(20, contentWidth-paneFrameWidth)
@@ -155,7 +157,7 @@ func (m Model) renderDashboardBody(availableRows int) string {
 		return lipgloss.JoinVertical(lipgloss.Center, list, details)
 	}
 
-	leftOuterWidth := min(42, max(30, contentWidth/3))
+	leftOuterWidth := clamp(contentWidth/3, 30, 50)
 	rightOuterWidth := max(36, contentWidth-leftOuterWidth-1)
 	leftTextWidth := max(20, leftOuterWidth-paneFrameWidth)
 	rightTextWidth := max(20, rightOuterWidth-paneFrameWidth)
@@ -337,20 +339,15 @@ func (m Model) renderDetailContent(width, height int) string {
 		mutedStyle.Render("   vs   ") +
 		scoreTeamStyle.Render(truncate(match.AwayTeam.Name, nameCap)))
 
-	// The score is a priority, but so is the timeline: on a short pane the
-	// 5-line ASCII score collapses to a single line so a (compacted) timeline
-	// still fits without clipping rather than the big score eating the space.
+	// The score scales with the pane (it's a priority element) but never at the
+	// cost of the timeline: bestScore steps down from 2x art to 1x to a single
+	// line so the rest of the head plus a compacted timeline always fits.
 	stageLines := 0
 	if stage != "" {
 		stageLines = 1
 	}
-	minLayout := stageLines + 1 /*teams*/ + bigDigitHeight + 1 /*status*/ + 1 /*sep*/ + 1 + len(details.Events)
-	useBigScore := height <= 0 || minLayout <= height
-	if useBigScore {
-		headLine(bigScoreStyle.Render(bigScore(match.Score.Home, match.Score.Away)))
-	} else {
-		headLine(bigScoreStyle.Render(fmt.Sprintf("%d  —  %d", match.Score.Home, match.Score.Away)))
-	}
+	headOther := stageLines + 1 /*teams*/ + 1 /*status*/ + 1 /*sep*/
+	headLine(bestScore(match.Score.Home, match.Score.Away, textWidth, height, headOther, len(details.Events)))
 	headLine(statusBadge(match.Status) + mutedStyle.Render("  "+matchStatusDetail(match)))
 
 	if !statsAvailable {
@@ -366,7 +363,9 @@ func (m Model) renderDetailContent(width, height int) string {
 	// stats are replaced with the expected lineups, or match info if the team
 	// sheets are not out yet.
 	const gap = 2
-	colWidth := max(16, (width-gap)/2)
+	// Cap the two content columns so they stay close together and centered on
+	// wide panes instead of drifting to opposite edges.
+	colWidth := clamp((width-gap)/2, 16, 40)
 
 	headStr := strings.TrimRight(head.String(), "\n")
 	headLineCount := lipgloss.Height(headStr)
@@ -403,6 +402,7 @@ func (m Model) renderDetailContent(width, height int) string {
 		Render(renderTimeline(details.Events, colWidth, compact))
 	right := lipgloss.NewStyle().Width(colWidth).Render(rightCol)
 	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	body = lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(body)
 
 	sep := "\n\n"
 	if height > 0 && headLineCount+2+lipgloss.Height(body) > height {
@@ -567,6 +567,7 @@ func renderLineupBody(home, away types.TeamLineup, homeName, awayName string, wi
 	left := lipgloss.NewStyle().Width(colWidth).MarginRight(gap).Render(renderLineupColumn(home, homeName, colWidth))
 	right := lipgloss.NewStyle().Width(colWidth).Render(renderLineupColumn(away, awayName, colWidth))
 	columns := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	columns = lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(columns)
 
 	return center.Render(groupHeaderStyle.Render("EXPECTED LINEUPS")) + "\n\n" + columns
 }
@@ -832,17 +833,72 @@ func bigNumber(n int) []string {
 	return rows
 }
 
-// bigScore lays the two scores side by side with a dash between them.
-func bigScore(home, away int) string {
-	left := bigNumber(home)
-	right := bigNumber(away)
-	sep := []string{"     ", "     ", " ─── ", "     ", "     "}
+// bigScore lays the two scores side by side with a dash between them, scaled up
+// by the given factor (1 = the base 5-row glyphs, 2 = double size, etc.).
+func bigScore(home, away, scale int) string {
+	if scale < 1 {
+		scale = 1
+	}
+	left := scaleArt(bigNumber(home), scale, scale)
+	right := scaleArt(bigNumber(away), scale, scale)
 
-	lines := make([]string, bigDigitHeight)
-	for r := 0; r < bigDigitHeight; r++ {
-		lines[r] = left[r] + "  " + sep[r] + "  " + right[r]
+	h := len(left)
+	dash := strings.Repeat("─", 3*scale)
+	blank := strings.Repeat(" ", 3*scale)
+	mid := h / 2
+
+	lines := make([]string, h)
+	for r := 0; r < h; r++ {
+		sep := blank
+		if r == mid {
+			sep = dash
+		}
+		lines[r] = left[r] + "   " + sep + "   " + right[r]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// scaleArt enlarges block art by repeating each cell sx times across and each
+// row sy times down, so the same glyphs can render at multiple sizes.
+func scaleArt(lines []string, sx, sy int) []string {
+	if sx <= 1 && sy <= 1 {
+		return lines
+	}
+	out := make([]string, 0, len(lines)*sy)
+	for _, line := range lines {
+		var b strings.Builder
+		for _, r := range line {
+			for i := 0; i < sx; i++ {
+				b.WriteRune(r)
+			}
+		}
+		row := b.String()
+		for i := 0; i < sy; i++ {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// bestScore renders the scoreline as large as the pane allows: it prefers 2x
+// ASCII art, falls back to 1x, then a single text line, always reserving room
+// for the rest of the head plus the (compacted) timeline. headOther counts the
+// non-score head lines (stage, teams, status, separator); events is the number
+// of timeline entries.
+func bestScore(home, away, textWidth, height, headOther, events int) string {
+	for _, scale := range []int{2, 1} {
+		if scale == 2 && height <= 0 {
+			continue
+		}
+		art := bigScore(home, away, scale)
+		if lipgloss.Width(art) > textWidth {
+			continue
+		}
+		if height <= 0 || headOther+lipgloss.Height(art)+1+events <= height {
+			return bigScoreStyle.Render(art)
+		}
+	}
+	return bigScoreStyle.Render(fmt.Sprintf("%d  —  %d", home, away))
 }
 
 func matchStatusDetail(match types.Match) string {
