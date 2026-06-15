@@ -86,6 +86,14 @@ func (m Model) renderStatusLine() string {
 
 func (m Model) renderScrollBody(availableRows int) string {
 	body := m.renderBody()
+
+	// When the content fits, center it vertically so the group cards sit in the
+	// middle of the screen instead of being pinned to the top. Only fall back to
+	// the scrolling viewport when the content is too tall to show at once.
+	if lipgloss.Height(body) <= availableRows {
+		return lipgloss.Place(lipgloss.Width(body), availableRows, lipgloss.Center, lipgloss.Center, body)
+	}
+
 	vp := m.viewport
 	vp.Width = min(max(20, m.width-2), max(20, lipgloss.Width(body)))
 	vp.Height = availableRows
