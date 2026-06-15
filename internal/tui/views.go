@@ -221,11 +221,14 @@ func (m Model) renderLiveMatches() string {
 	}
 
 	for i, match := range matches {
+		score := fmt.Sprintf("%d - %d", match.Score.Home, match.Score.Away)
+		if match.Status == types.StatusScheduled {
+			score = "vs"
+		}
 		line := fmt.Sprintf(
-			"%s %d - %d %s  %s  %s",
+			"%s %s %s  %s  %s",
 			match.HomeTeam.Name,
-			match.Score.Home,
-			match.Score.Away,
+			score,
 			match.AwayTeam.Name,
 			formatMinute(match),
 			string(match.Status),
@@ -347,7 +350,13 @@ func (m Model) renderDetailContent(width, height int) string {
 		stageLines = 1
 	}
 	headOther := stageLines + 1 /*teams*/ + 1 /*status*/ + 1 /*sep*/
-	headLine(bestScore(match.Score.Home, match.Score.Away, textWidth, height, headOther, len(details.Events)))
+	// Before kickoff there is no score, so showing 0-0 is misleading. Surface the
+	// kickoff time as the centerpiece instead, with the date on the status line.
+	if match.Status == types.StatusScheduled {
+		headLine(bigScoreStyle.Render(formatKickoffTime(match)))
+	} else {
+		headLine(bestScore(match.Score.Home, match.Score.Away, textWidth, height, headOther, len(details.Events)))
+	}
 	headLine(statusBadge(match.Status) + mutedStyle.Render("  "+matchStatusDetail(match)))
 
 	if !statsAvailable {
@@ -904,6 +913,9 @@ func bestScore(home, away, textWidth, height, headOther, events int) string {
 func matchStatusDetail(match types.Match) string {
 	switch match.Status {
 	case types.StatusScheduled:
+		if d := formatKickoffDate(match); d != "" {
+			return d
+		}
 		return formatKickoff(match)
 	case types.StatusHalfTime:
 		return "Half-time"
@@ -1077,6 +1089,25 @@ func formatKickoff(match types.Match) string {
 		return "KO --:--"
 	}
 	return "KO " + match.Kickoff.In(displayLocation).Format("15:04")
+}
+
+// formatKickoffTime returns just the kickoff clock time (e.g. "15:04") in the
+// display timezone, used as the centerpiece for upcoming matches in place of a
+// 0-0 score.
+func formatKickoffTime(match types.Match) string {
+	if match.Kickoff.IsZero() {
+		return "--:--"
+	}
+	return match.Kickoff.In(displayLocation).Format("15:04")
+}
+
+// formatKickoffDate returns the kickoff day (e.g. "Mon, Jan 2") in the display
+// timezone, or an empty string when the kickoff is unknown.
+func formatKickoffDate(match types.Match) string {
+	if match.Kickoff.IsZero() {
+		return ""
+	}
+	return match.Kickoff.In(displayLocation).Format("Mon, Jan 2")
 }
 
 func clamp(value, low, high int) int {
