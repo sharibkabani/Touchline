@@ -334,7 +334,6 @@ func (m Model) renderDetailContent(width, height int) string {
 	// A scheduled match with no published team sheets shows a match-info card
 	// (venue, kickoff, competition) instead of empty lineups.
 	hasLineups := len(details.HomeLineup.Players) > 0 || len(details.AwayLineup.Players) > 0
-	showMatchInfo := match.Status == types.StatusScheduled && !hasLineups
 
 	stage := match.Stage
 	if stage == "" {
@@ -386,33 +385,46 @@ func (m Model) renderDetailContent(width, height int) string {
 	headStr := strings.TrimRight(head.String(), "\n")
 	headLineCount := lipgloss.Height(headStr)
 
-	if showMatchInfo {
-		return headStr + "\n\n" + renderMatchInfo(match, details, width)
+	bodyBudget := -1
+	if height > 0 {
+		bodyBudget = max(1, height-headLineCount-2)
 	}
+
+	joinBody := func(body string) string {
+		sep := "\n\n"
+		if height > 0 && headLineCount+2+lipgloss.Height(body) > height {
+			sep = "\n"
+		}
+		return headStr + sep + body
+	}
+
+	// Before kickoff there is nothing to time or measure: show the expected
+	// formation when team sheets are out (falling back to a plain list if the
+	// shape can't be resolved), and the match-facts card only when no lineup is
+	// available yet.
 	if match.Status == types.StatusScheduled {
-		return headStr + "\n\n" +
-			renderLineupBody(details.HomeLineup, details.AwayLineup, match.HomeTeam.Name, match.AwayTeam.Name, width, colWidth, gap)
+		if hasLineups {
+			if pitch, ok := renderFormationPitch(details.HomeLineup, details.AwayLineup,
+				match.HomeTeam.Name, match.AwayTeam.Name, details.Events, width, bodyBudget); ok {
+				return joinBody(pitch)
+			}
+			return headStr + "\n\n" +
+				renderLineupBody(details.HomeLineup, details.AwayLineup, match.HomeTeam.Name, match.AwayTeam.Name, width, colWidth, gap)
+		}
+		return headStr + "\n\n" + renderMatchInfo(match, details, width)
 	}
 
 	// Live / finished. The score and timeline are the priority: when the pane is
 	// short the timeline collapses to one row per event (dropping the connector
 	// lines) so its bottom is never clipped, and the lower-priority match-facts
 	// block is only appended to the stats column when it actually fits.
-	bodyBudget := -1
-	if height > 0 {
-		bodyBudget = max(1, height-headLineCount-2)
-	}
 
 	// L toggles the on-pitch formation in place of the timeline/stats. It falls
 	// through to the stats view when no usable lineup is available.
 	if m.showLineups {
 		if pitch, ok := renderFormationPitch(details.HomeLineup, details.AwayLineup,
 			match.HomeTeam.Name, match.AwayTeam.Name, details.Events, width, bodyBudget); ok {
-			sep := "\n\n"
-			if height > 0 && headLineCount+2+lipgloss.Height(pitch) > height {
-				sep = "\n"
-			}
-			return headStr + sep + pitch
+			return joinBody(pitch)
 		}
 	}
 
