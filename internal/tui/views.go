@@ -672,8 +672,23 @@ func formatLineupPlayer(player types.LineupPlayer, width int) string {
 // It returns ok=false when either lineup can't be resolved into a valid
 // formation, so the caller can fall back to the stats view.
 func renderFormationPitch(home, away types.TeamLineup, homeName, awayName string, events []types.MatchEvent, width, maxHeight int) (string, bool) {
-	inner := clamp(width-4, 22, 60)
-	if width-4 < 22 {
+	// Reserve a substitutes column to the right of the pitch when the pane is
+	// wide enough to keep the pitch itself legible; otherwise show the pitch alone.
+	const subsGap = 2
+	subsInner := 0
+	if width >= 50 {
+		subsInner = clamp(width/4, 14, 20)
+	}
+	pitchWidth := width
+	if subsInner > 0 {
+		pitchWidth = width - subsGap - (subsInner + 4) // +4 = subs border + padding
+		if pitchWidth < 26 {
+			subsInner, pitchWidth = 0, width
+		}
+	}
+
+	inner := clamp(pitchWidth-4, 22, 60)
+	if pitchWidth-4 < 22 {
 		return "", false // too narrow to lay out players legibly
 	}
 
@@ -746,7 +761,126 @@ func renderFormationPitch(home, away types.TeamLineup, homeName, awayName string
 	// Width includes the style's horizontal padding (1 col each side), so set it
 	// to inner+2 to expose exactly inner columns and avoid wrapping the rows.
 	pitch := pitchBorderStyle.Width(inner + 2).Render(strings.Join(lines, "\n"))
-	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(pitch), true
+
+	combined := pitch
+	if subsInner > 0 {
+		// Match the subs column height to the pitch (minus its top/bottom border)
+		// so the layout never grows taller than the field.
+		contentRows := lipgloss.Height(pitch) - 2
+		subs := renderSubsColumn(awayName, homeName, away, home, subsInner, contentRows)
+		spacer := lipgloss.NewStyle().Width(subsGap).Render("")
+		combined = lipgloss.JoinHorizontal(lipgloss.Top, pitch, spacer, subs)
+	}
+	return lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(combined), true
+}
+
+// renderSubsColumn renders, beside the pitch, the substitutions made and the
+// remaining bench for both teams: the side shown on top of the pitch (away)
+// first, then the bottom side (home), so the column mirrors the field. Each swap
+// reads "▲ MIN On" / "▼ MIN Off"; unused bench players follow. The column is
+// capped to the pitch height, prioritising substitutions over the bench list.
+func renderSubsColumn(topName, botName string, top, bottom types.TeamLineup, inner, maxRows int) string {
+	center := lipgloss.NewStyle().Width(inner).Align(lipgloss.Center)
+
+	lines := []string{center.Render(groupHeaderStyle.Render("SUBS"))}
+	// Rows left for the two team blocks after the SUBS title and blank divider.
+	avail := max(2, maxRows-2)
+	topBudget, botBudget := splitSubsBudget(avail, len(top.Subs), len(bottom.Subs))
+
+	lines = append(lines, teamSubBlock(center, topName, top, inner, topBudget)...)
+	lines = append(lines, "")
+	lines = append(lines, teamSubBlock(center, botName, bottom, inner, botBudget)...)
+
+	if maxRows > 0 && len(lines) > maxRows {
+		lines = lines[:maxRows]
+	}
+	return pitchBorderStyle.Width(inner + 2).Render(strings.Join(lines, "\n"))
+}
+
+// splitSubsBudget divides the available rows between the two team blocks. Each
+// block needs one row for its name plus two per substitution; when both fit, the
+// leftover rows (for bench players) are shared evenly, otherwise the space is
+// split down the middle.
+func splitSubsBudget(avail, topSubs, botSubs int) (int, int) {
+	idealTop, idealBot := 1+2*topSubs, 1+2*botSubs
+	if idealTop+idealBot <= avail {
+		extra := avail - idealTop - idealBot
+		return idealTop + extra/2, idealBot + (extra - extra/2)
+	}
+	top := avail / 2
+	return top, avail - top
+}
+
+// teamSubBlock renders one team's section: name, the substitution pairs (which
+// take priority), then any unused bench players, all within budget rows.
+func teamSubBlock(center lipgloss.Style, name string, lineup types.TeamLineup, inner, budget int) []string {
+	out := []string{center.Render(scoreTeamStyle.Render(truncate(name, inner)))}
+	used := 1
+
+	subsShown := 0
+	for _, s := range lineup.Subs {
+		if used+2 > budget {
+			break
+		}
+		out = append(out,
+			center.Render(subLine(true, s.Minute, s.OnName, inner)),
+			center.Render(subLine(false, s.Minute, s.OffName, inner)))
+		used += 2
+		subsShown++
+	}
+	// If substitutions had to be trimmed, flag the remainder and leave the bench
+	// out (the swaps are the priority).
+	if rem := len(lineup.Subs) - subsShown; rem > 0 {
+		if used < budget {
+			out = append(out, center.Render(groupHeaderStyle.Render(fmt.Sprintf("+%d more", rem))))
+		}
+		return out
+	}
+
+	var bench []types.LineupPlayer
+	for _, p := range lineup.Bench {
+		if !p.OnPitch {
+			bench = append(bench, p)
+		}
+	}
+	for i, p := range bench {
+		if used >= budget {
+			break
+		}
+		if used == budget-1 && len(bench)-i > 1 {
+			out = append(out, center.Render(groupHeaderStyle.Render(fmt.Sprintf("+%d more", len(bench)-i))))
+			break
+		}
+		out = append(out, center.Render(formatSub(p, inner)))
+		used++
+	}
+	return out
+}
+
+// subLine renders a substitution movement: a green "▲ MIN Name" for the player
+// coming on, or a dimmed "▼ MIN Name" for the player going off.
+func subLine(on bool, minute, name string, width int) string {
+	arrow, style := "▼", lipgloss.NewStyle().Foreground(dim)
+	nameStyle := style
+	if on {
+		arrow, style, nameStyle = "▲", goalDotStyle, pitchNameStyle
+	}
+	prefix := arrow
+	if minute != "" {
+		prefix += truncate(minute, 5)
+	}
+	name = fitName(name, max(3, width-len([]rune(prefix))-1))
+	return style.Render(prefix) + " " + nameStyle.Render(name)
+}
+
+// formatSub renders one unused bench entry ("NN Name").
+func formatSub(player types.LineupPlayer, width int) string {
+	number := "  "
+	if player.Number > 0 {
+		number = fmt.Sprintf("%2d", player.Number)
+	}
+	name := fitName(player.Name, max(3, width-len([]rune(number))-1))
+	return pitchNumberStyle.Render(number) + " " + pitchNameStyle.Render(name)
 }
 
 // arrangeFormation splits a starting XI into pitch rows. The formation string

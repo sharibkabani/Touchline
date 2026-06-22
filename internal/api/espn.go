@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -153,11 +154,12 @@ func (p *ESPNProvider) getSummary(ctx context.Context, competition types.Competi
 
 func summaryLineups(summary espnSummary) (home, away types.TeamLineup) {
 	for _, roster := range summary.Rosters {
+		lineup := convertLineup(roster, summary.KeyEvents)
 		switch roster.HomeAway {
 		case "home":
-			home = convertLineup(roster)
+			home = lineup
 		case "away":
-			away = convertLineup(roster)
+			away = lineup
 		}
 	}
 	return home, away
@@ -383,9 +385,51 @@ func applyCardCounts(stats *types.MatchStatistics, events []types.MatchEvent) {
 	}
 }
 
-func convertLineup(roster espnRoster) types.TeamLineup {
-	players := make([]types.LineupPlayer, 0, len(roster.Roster))
+// convertLineup builds the on-pitch XI for a team. It starts from the eleven
+// listed starters, then walks the substitution timeline so each player who came
+// on takes over the formation slot (position and place) of the player they
+// replaced. The result always reflects who is currently on the field; the bench
+// is never included.
+func convertLineup(roster espnRoster, keyEvents []espnKeyEvent) types.TeamLineup {
+	byID := make(map[string]espnRosterEntry, len(roster.Roster))
 	for _, entry := range roster.Roster {
+		if entry.Athlete.ID != "" {
+			byID[entry.Athlete.ID] = entry
+		}
+	}
+
+	// Each slot is an on-pitch position seeded by a starter; the occupant id is
+	// swapped as substitutions are applied, but the slot's position is retained
+	// so the formation layout stays intact (subs are listed as "SUB").
+	type slot struct {
+		occupant string
+		position string
+	}
+	var slots []slot
+	for _, entry := range roster.Roster {
+		if !entry.Starter {
+			continue
+		}
+		slots = append(slots, slot{occupant: entry.Athlete.ID, position: entry.Position.Abbreviation})
+	}
+
+	teamSubs := teamSubstitutions(keyEvents, roster.Team.ID)
+	for _, sub := range teamSubs {
+		for i := range slots {
+			if slots[i].occupant == sub.outID {
+				slots[i].occupant = sub.inID
+				break
+			}
+		}
+	}
+
+	onPitch := make(map[string]bool, len(slots))
+	players := make([]types.LineupPlayer, 0, len(slots))
+	for _, sl := range slots {
+		entry, ok := byID[sl.occupant]
+		if !ok {
+			continue
+		}
 		name := entry.Athlete.DisplayName
 		if name == "" {
 			name = entry.Athlete.ShortName
@@ -393,16 +437,109 @@ func convertLineup(roster espnRoster) types.TeamLineup {
 		if name == "" {
 			continue
 		}
+		position := sl.position
+		if position == "" || strings.EqualFold(position, "SUB") {
+			position = entry.Position.Abbreviation
+		}
 
+		onPitch[sl.occupant] = true
 		players = append(players, types.LineupPlayer{
 			Name:     name,
 			Number:   atoi(entry.Jersey),
-			Position: entry.Position.Abbreviation,
-			Starter:  entry.Starter,
+			Position: position,
+			Starter:  true,
 		})
 	}
 
-	return types.TeamLineup{Formation: roster.Formation, Players: players}
+	// Bench: every named substitute (non-starter), flagged when they have since
+	// come on so the UI can show who is still available.
+	bench := make([]types.LineupPlayer, 0)
+	for _, entry := range roster.Roster {
+		if entry.Starter {
+			continue
+		}
+		name := rosterName(entry)
+		if name == "" {
+			continue
+		}
+		bench = append(bench, types.LineupPlayer{
+			Name:    name,
+			Number:  atoi(entry.Jersey),
+			Starter: false,
+			OnPitch: onPitch[entry.Athlete.ID],
+		})
+	}
+
+	// Substitution log: each swap as on/off names with the minute it occurred.
+	subsLog := make([]types.Substitution, 0, len(teamSubs))
+	for _, s := range teamSubs {
+		in, out := byID[s.inID], byID[s.outID]
+		subsLog = append(subsLog, types.Substitution{
+			Minute:    s.minute,
+			OnName:    rosterName(in),
+			OnNumber:  atoi(in.Jersey),
+			OffName:   rosterName(out),
+			OffNumber: atoi(out.Jersey),
+		})
+	}
+
+	return types.TeamLineup{Formation: roster.Formation, Players: players, Bench: bench, Subs: subsLog}
+}
+
+// rosterName returns the player's display name, falling back to the short name.
+func rosterName(entry espnRosterEntry) string {
+	if entry.Athlete.DisplayName != "" {
+		return entry.Athlete.DisplayName
+	}
+	return entry.Athlete.ShortName
+}
+
+type substitution struct {
+	inID   string
+	outID  string
+	minute string
+}
+
+// teamSubstitutions returns the substitutions for one team in chronological
+// order, so chained subs (A→B then B→C) resolve to the final occupant.
+func teamSubstitutions(events []espnKeyEvent, teamID string) []substitution {
+	type timed struct {
+		sub   substitution
+		clock float64
+	}
+
+	var timeline []timed
+	for _, event := range events {
+		if event.Type.Type != "substitution" {
+			continue
+		}
+		if teamID != "" && event.Team.ID != teamID {
+			continue
+		}
+		if len(event.Participants) < 2 {
+			continue
+		}
+		in := event.Participants[0].Athlete.ID
+		out := event.Participants[1].Athlete.ID
+		if in == "" || out == "" {
+			continue
+		}
+		minute := event.Clock.DisplayValue
+		if minute == "" && event.Clock.Value > 0 {
+			minute = fmt.Sprintf("%d'", int((event.Clock.Value+30)/60))
+		}
+		timeline = append(timeline, timed{substitution{inID: in, outID: out, minute: minute}, event.Clock.Value})
+	}
+
+	sort.SliceStable(timeline, func(i, j int) bool {
+		return timeline[i].clock < timeline[j].clock
+	})
+
+	subs := make([]substitution, len(timeline))
+	for i, t := range timeline {
+		subs[i] = t.sub
+	}
+	return subs
 }
 
 func (p *ESPNProvider) GetStandings(ctx context.Context, competition types.CompetitionCode) ([]types.GroupStanding, error) {

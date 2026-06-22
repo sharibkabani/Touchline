@@ -97,8 +97,31 @@ type espnDetail struct {
 type espnSummary struct {
 	Rosters    []espnRoster     `json:"rosters"`
 	Commentary []espnCommentary `json:"commentary"`
+	KeyEvents  []espnKeyEvent   `json:"keyEvents"`
 	GameInfo   espnGameInfo     `json:"gameInfo"`
 	Boxscore   espnBoxscore     `json:"boxscore"`
+}
+
+// espnKeyEvent is a single timeline entry. Touchline only consumes the
+// substitution entries, where participants[0] is the player coming on and
+// participants[1] is the player going off.
+type espnKeyEvent struct {
+	Type struct {
+		Type string `json:"type"`
+	} `json:"type"`
+	Clock struct {
+		Value        float64 `json:"value"`
+		DisplayValue string  `json:"displayValue"`
+	} `json:"clock"`
+	Team struct {
+		ID string `json:"id"`
+	} `json:"team"`
+	Participants []struct {
+		Athlete struct {
+			ID          string `json:"id"`
+			DisplayName string `json:"displayName"`
+		} `json:"athlete"`
+	} `json:"participants"`
 }
 
 // espnGameInfo carries the contextual facts ESPN attaches to a fixture:
@@ -160,6 +183,7 @@ type espnRosterEntry struct {
 	Starter bool   `json:"starter"`
 	Jersey  string `json:"jersey"`
 	Athlete struct {
+		ID          string `json:"id"`
 		DisplayName string `json:"displayName"`
 		ShortName   string `json:"shortName"`
 	} `json:"athlete"`

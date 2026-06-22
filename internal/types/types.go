@@ -95,13 +95,29 @@ type LineupPlayer struct {
 	Number   int    `json:"number,omitempty"`
 	Position string `json:"position,omitempty"`
 	Starter  bool   `json:"starter"`
+	// OnPitch marks a bench player who has been brought on as a substitute, so
+	// the subs list can distinguish those still available from those already used.
+	OnPitch bool `json:"onPitch,omitempty"`
+}
+
+// Substitution records one swap: OnName came on for OffName at Minute.
+type Substitution struct {
+	Minute    string `json:"minute,omitempty"`
+	OnName    string `json:"onName"`
+	OnNumber  int    `json:"onNumber,omitempty"`
+	OffName   string `json:"offName"`
+	OffNumber int    `json:"offNumber,omitempty"`
 }
 
 // TeamLineup is one side's expected or confirmed team sheet. It is empty until
-// the lineup is announced (typically about an hour before kickoff).
+// the lineup is announced (typically about an hour before kickoff). Players holds
+// the eleven currently on the pitch; Bench holds the named substitutes; Subs is
+// the chronological log of substitutions made.
 type TeamLineup struct {
 	Formation string         `json:"formation,omitempty"`
 	Players   []LineupPlayer `json:"players,omitempty"`
+	Bench     []LineupPlayer `json:"bench,omitempty"`
+	Subs      []Substitution `json:"subs,omitempty"`
 }
 
 type MatchDetails struct {
