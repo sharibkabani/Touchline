@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 type FootballProvider interface {
 	GetScoreboard(ctx context.Context, competition types.CompetitionCode, date time.Time) (types.Scoreboard, error)
 	GetStandings(ctx context.Context, competition types.CompetitionCode) ([]types.GroupStanding, error)
+	GetBracket(ctx context.Context, competition types.CompetitionCode) ([]types.BracketRound, error)
 }
 
 // MockProvider serves bundled JSON so the app runs without network or API keys.
@@ -66,6 +68,20 @@ func (p *MockProvider) GetStandings(ctx context.Context, _ types.CompetitionCode
 	}
 
 	return response.Groups, nil
+}
+
+// GetBracket reads an optional bracket fixture. The bundled mock data focuses on
+// the group stage, so a missing file simply yields an empty bracket rather than
+// an error.
+func (p *MockProvider) GetBracket(ctx context.Context, _ types.CompetitionCode) ([]types.BracketRound, error) {
+	var response bracketResponse
+	if err := p.readJSON(ctx, "bracket.json", &response); err != nil {
+		if os.IsNotExist(err) || errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return response.Rounds, nil
 }
 
 func (p *MockProvider) readJSON(ctx context.Context, name string, target any) error {
