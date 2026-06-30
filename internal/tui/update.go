@@ -5,6 +5,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"touchline/internal/types"
 )
@@ -18,11 +19,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		// Leave room for the ASCII banner, subtitle, status line, spacers, and
-		// footer so the scroll viewport's paging matches what is on screen.
-		m.viewport.Width = max(0, msg.Width-4)
-		m.viewport.Height = max(1, msg.Height-13)
+		m.syncScrollViewport()
 		m.ensureSelectedVisible()
+
+	case tea.MouseMsg:
+		// Trackpad/wheel scrolling for the standings and bracket views. The
+		// dashboard paginates its own panes, so the viewport is bypassed there.
+		if m.currentView != ViewLiveMatches {
+			m.viewport, cmd = m.viewport.Update(msg)
+		}
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -35,6 +40,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			m.nextTopLevelView()
 			m.err = nil
+			m.syncScrollViewport()
 			m.ensureSelectedVisible()
 		case "l", "L":
 			// Toggle the detail pane between stats/timeline and the on-pitch
@@ -100,10 +106,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.standingsOK {
 			m.standings = msg.standings
 		}
+		if msg.bracketOK {
+			m.bracket = msg.bracket
+		}
 		m.err = msg.err
 		if !msg.loadedAt.IsZero() {
 			m.lastUpdated = msg.loadedAt
 		}
+		m.syncScrollViewport()
 		m.ensureSelectedVisible()
 		if match, ok := m.selectedMatch(); ok {
 			// Always refresh the selected match's details so a live score and
@@ -148,6 +158,12 @@ func (m Model) loadCurrentView(force bool) tea.Cmd {
 
 func (m Model) loadDashboard(force bool) tea.Cmd {
 	date := m.selectedDate
+	// The bracket is a separate (whole-tournament) request, so only fetch it when
+	// it is actually needed: on first load, or while the bracket tab is open. A
+	// bracket fetch error is surfaced only when that tab is showing, so it never
+	// disrupts the matches or standings views.
+	fetchBracket := m.currentView == ViewBracket || len(m.bracket) == 0
+	bracketErrRelevant := m.currentView == ViewBracket
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
@@ -155,12 +171,27 @@ func (m Model) loadDashboard(force bool) tea.Cmd {
 		matches, matchesErr := m.matchService.Matches(ctx, date, force)
 		standings, standingsErr := m.standingService.Standings(ctx, force)
 
+		var bracket []types.BracketRound
+		var bracketErr error
+		bracketOK := false
+		if fetchBracket {
+			bracket, bracketErr = m.bracketService.Bracket(ctx, force)
+			bracketOK = bracketErr == nil
+		}
+
+		errs := []error{matchesErr, standingsErr}
+		if bracketErrRelevant {
+			errs = append(errs, bracketErr)
+		}
+
 		return dataLoadedMsg{
 			matches:     matches,
 			matchesOK:   matchesErr == nil,
 			standings:   standings,
 			standingsOK: standingsErr == nil,
-			err:         joinErrors(matchesErr, standingsErr),
+			bracket:     bracket,
+			bracketOK:   bracketOK,
+			err:         joinErrors(errs...),
 			loadedAt:    time.Now(),
 		}
 	}
@@ -188,12 +219,30 @@ func tick(interval time.Duration) tea.Cmd {
 }
 
 func (m *Model) nextTopLevelView() {
-	if m.currentView == ViewLiveMatches {
+	switch m.currentView {
+	case ViewLiveMatches:
 		m.currentView = ViewStandings
-	} else {
+	case ViewStandings:
+		m.currentView = ViewBracket
+	default:
 		m.currentView = ViewLiveMatches
 	}
 	m.viewport.GotoTop()
+}
+
+// syncScrollViewport loads the current scroll view's content (standings or
+// bracket) and dimensions into the viewport so its key/wheel handling can page
+// correctly. Without this the viewport receives key events but holds no content,
+// so its offset stays pinned at zero and nothing scrolls. It is a no-op on the
+// dashboard, which lays out its own panes.
+func (m *Model) syncScrollViewport() {
+	if m.currentView == ViewLiveMatches || m.width == 0 {
+		return
+	}
+	body := m.renderBody()
+	m.viewport.Height = m.availableBodyRows()
+	m.viewport.Width = min(max(20, m.width-2), max(20, lipgloss.Width(body)))
+	m.viewport.SetContent(body)
 }
 
 func (m *Model) ensureSelectedVisible() {

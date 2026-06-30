@@ -61,11 +61,17 @@ func main() {
 		cache.New[[]types.GroupStanding](cfg.CacheTTL),
 		logger,
 	)
+	bracketService := services.NewBracketService(
+		provider,
+		cfg.Competition,
+		cache.New[[]types.BracketRound](cfg.CacheTTL),
+		logger,
+	)
 
 	// In SSH mode the services (and their caches) are shared across every
 	// connected session, so concurrent viewers reuse the same upstream data.
 	if cfg.SSHEnabled {
-		err := serveSSH(cfg, matchService, standingService, tracker, logger)
+		err := serveSSH(cfg, matchService, standingService, bracketService, tracker, logger)
 		tracker.Close() // flush buffered events before exit
 		if err != nil {
 			logger.Error("touchline ssh server exited with error", "error", err)
@@ -74,8 +80,8 @@ func main() {
 		return
 	}
 
-	model := tui.NewModel(matchService, standingService, cfg.RefreshInterval)
-	program := tea.NewProgram(model, tea.WithAltScreen())
+	model := tui.NewModel(matchService, standingService, bracketService, cfg.RefreshInterval)
+	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	tracker.AppStarted()
 	start := time.Now()

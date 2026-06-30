@@ -16,11 +16,13 @@ type View int
 const (
 	ViewLiveMatches View = iota
 	ViewStandings
+	ViewBracket
 )
 
 type Model struct {
 	matchService    *services.MatchService
 	standingService *services.StandingService
+	bracketService  *services.BracketService
 	refreshInterval time.Duration
 
 	currentView  View
@@ -30,6 +32,7 @@ type Model struct {
 	matches   []types.Match
 	details   types.MatchDetails
 	standings []types.GroupStanding
+	bracket   []types.BracketRound
 
 	selectedMatchID string
 	loading         bool
@@ -50,6 +53,8 @@ type dataLoadedMsg struct {
 	matchesOK   bool
 	standings   []types.GroupStanding
 	standingsOK bool
+	bracket     []types.BracketRound
+	bracketOK   bool
 	err         error
 	loadedAt    time.Time
 }
@@ -65,11 +70,13 @@ type refreshTickMsg time.Time
 func NewModel(
 	matchService *services.MatchService,
 	standingService *services.StandingService,
+	bracketService *services.BracketService,
 	refreshInterval time.Duration,
 ) Model {
 	return Model{
 		matchService:    matchService,
 		standingService: standingService,
+		bracketService:  bracketService,
 		refreshInterval: refreshInterval,
 		currentView:     ViewLiveMatches,
 		selectedDate:    startOfDay(time.Now()),

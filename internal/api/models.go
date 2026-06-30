@@ -13,3 +13,7 @@ type matchDetailsResponse struct {
 type standingsResponse struct {
 	Groups []types.GroupStanding `json:"groups"`
 }
+
+type bracketResponse struct {
+	Rounds []types.BracketRound `json:"rounds"`
+}

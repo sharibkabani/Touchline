@@ -31,6 +31,7 @@ func serveSSH(
 	cfg config.Config,
 	matchService *services.MatchService,
 	standingService *services.StandingService,
+	bracketService *services.BracketService,
 	tracker *analytics.Tracker,
 	logger *slog.Logger,
 ) error {
@@ -44,8 +45,8 @@ func serveSSH(
 	}
 
 	handler := func(sess ssh.Session) (tea.Model, []tea.ProgramOption) {
-		model := tui.NewModel(matchService, standingService, cfg.RefreshInterval)
-		return model, []tea.ProgramOption{tea.WithAltScreen()}
+		model := tui.NewModel(matchService, standingService, bracketService, cfg.RefreshInterval)
+		return model, []tea.ProgramOption{tea.WithAltScreen(), tea.WithMouseCellMotion()}
 	}
 
 	// Middleware executes last-listed-first, so this resolves to:

@@ -155,3 +155,27 @@ type GroupStanding struct {
 	Group string        `json:"group"`
 	Rows  []StandingRow `json:"rows"`
 }
+
+// BracketMatch is one knockout fixture. Placeholder team names (e.g. "Round of 32
+// 3 Winner") flow through unchanged until the feeding match is decided. Winner is
+// "home", "away", or "" and reflects the advancing side, including via penalties.
+type BracketMatch struct {
+	ID           string      `json:"id"`
+	Home         Team        `json:"home"`
+	Away         Team        `json:"away"`
+	Score        Score       `json:"score"`
+	HasShootout  bool        `json:"hasShootout,omitempty"`
+	ShootoutHome int         `json:"shootoutHome,omitempty"`
+	ShootoutAway int         `json:"shootoutAway,omitempty"`
+	Winner       string      `json:"winner,omitempty"`
+	Status       MatchStatus `json:"status"`
+	Kickoff      time.Time   `json:"kickoff,omitempty"`
+}
+
+// BracketRound is one stage of the knockout bracket (e.g. "Round of 16"), holding
+// its fixtures in playing order.
+type BracketRound struct {
+	Name    string         `json:"name"`
+	Slug    string         `json:"slug"`
+	Matches []BracketMatch `json:"matches"`
+}

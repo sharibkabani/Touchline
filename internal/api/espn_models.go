@@ -17,7 +17,16 @@ type espnEvent struct {
 	ID           string            `json:"id"`
 	Date         string            `json:"date"`
 	Name         string            `json:"name"`
+	Season       espnEventSeason   `json:"season"`
 	Competitions []espnCompetition `json:"competitions"`
+}
+
+// espnEventSeason carries the round an event belongs to. For knockout fixtures
+// the slug is "round-of-32", "round-of-16", "quarterfinals", "semifinals",
+// "3rd-place-match" or "final"; group games use "group-stage".
+type espnEventSeason struct {
+	Year int    `json:"year"`
+	Slug string `json:"slug"`
 }
 
 type espnCompetition struct {
@@ -51,11 +60,13 @@ type espnStatus struct {
 }
 
 type espnCompetitor struct {
-	ID         string         `json:"id"`
-	HomeAway   string         `json:"homeAway"`
-	Score      string         `json:"score"`
-	Team       espnTeam       `json:"team"`
-	Statistics []espnStatItem `json:"statistics"`
+	ID            string         `json:"id"`
+	HomeAway      string         `json:"homeAway"`
+	Score         string         `json:"score"`
+	Winner        bool           `json:"winner"`
+	ShootoutScore *int           `json:"shootoutScore"`
+	Team          espnTeam       `json:"team"`
+	Statistics    []espnStatItem `json:"statistics"`
 }
 
 type espnTeam struct {

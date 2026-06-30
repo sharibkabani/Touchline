@@ -83,6 +83,113 @@ func (p *ESPNProvider) GetScoreboard(ctx context.Context, competition types.Comp
 	return scoreboard, nil
 }
 
+// knockoutRounds lists the bracket stages in playing order, mapping ESPN's
+// per-event season slug to a display name. Tournaments that skip a stage (e.g. a
+// 32-team field with no round of 32) simply contribute no matches for that slug.
+var knockoutRounds = []struct{ slug, name string }{
+	{"round-of-32", "Round of 32"},
+	{"round-of-16", "Round of 16"},
+	{"quarterfinals", "Quarterfinals"},
+	{"semifinals", "Semifinals"},
+	{"3rd-place-match", "Third Place"},
+	{"final", "Final"},
+}
+
+// GetBracket returns the knockout bracket grouped by round. ESPN's scoreboard
+// tags each event with the round it belongs to (season.slug), so a single
+// whole-season request (limit raised past the default 100 cap) yields every
+// knockout fixture, including future placeholder matchups like "Round of 16 1
+// Winner".
+func (p *ESPNProvider) GetBracket(ctx context.Context, competition types.CompetitionCode) ([]types.BracketRound, error) {
+	year := time.Now().Year()
+	url := fmt.Sprintf("%s/%s/scoreboard?dates=%d0101-%d1231&limit=400",
+		p.scoreboardBase, espnSlug(competition), year, year)
+
+	var response espnScoreboard
+	if err := p.getJSON(ctx, url, &response); err != nil {
+		return nil, err
+	}
+
+	return buildBracket(response.Events), nil
+}
+
+// buildBracket groups events by their knockout round, ordered defence-to-final,
+// with each round's fixtures sorted chronologically.
+func buildBracket(events []espnEvent) []types.BracketRound {
+	bySlug := make(map[string][]espnEvent)
+	for _, event := range events {
+		bySlug[event.Season.Slug] = append(bySlug[event.Season.Slug], event)
+	}
+
+	rounds := make([]types.BracketRound, 0, len(knockoutRounds))
+	for _, round := range knockoutRounds {
+		events := bySlug[round.slug]
+		if len(events) == 0 {
+			continue
+		}
+		sort.SliceStable(events, func(i, j int) bool { return events[i].Date < events[j].Date })
+
+		matches := make([]types.BracketMatch, 0, len(events))
+		for _, event := range events {
+			if match, ok := convertBracketMatch(event); ok {
+				matches = append(matches, match)
+			}
+		}
+		if len(matches) > 0 {
+			rounds = append(rounds, types.BracketRound{Name: round.name, Slug: round.slug, Matches: matches})
+		}
+	}
+	return rounds
+}
+
+// convertBracketMatch maps one ESPN event into a bracket fixture, capturing the
+// advancing side (including penalty shootouts) when the game is decided.
+func convertBracketMatch(event espnEvent) (types.BracketMatch, bool) {
+	if len(event.Competitions) == 0 {
+		return types.BracketMatch{}, false
+	}
+	comp := event.Competitions[0]
+
+	var home, away *espnCompetitor
+	for i := range comp.Competitors {
+		switch comp.Competitors[i].HomeAway {
+		case "home":
+			home = &comp.Competitors[i]
+		case "away":
+			away = &comp.Competitors[i]
+		}
+	}
+	if home == nil || away == nil {
+		return types.BracketMatch{}, false
+	}
+
+	status, _ := mapStatus(comp.Status)
+
+	winner := ""
+	switch {
+	case home.Winner:
+		winner = "home"
+	case away.Winner:
+		winner = "away"
+	}
+
+	match := types.BracketMatch{
+		ID:      event.ID,
+		Home:    types.Team{ID: home.Team.ID, Name: teamName(home.Team)},
+		Away:    types.Team{ID: away.Team.ID, Name: teamName(away.Team)},
+		Score:   types.Score{Home: atoi(home.Score), Away: atoi(away.Score)},
+		Winner:  winner,
+		Status:  status,
+		Kickoff: parseESPNTime(event.Date),
+	}
+	if home.ShootoutScore != nil && away.ShootoutScore != nil {
+		match.HasShootout = true
+		match.ShootoutHome = *home.ShootoutScore
+		match.ShootoutAway = *away.ShootoutScore
+	}
+	return match, true
+}
+
 // enrichDetails fetches each match's summary (one call per match, concurrently)
 // to fill in data the fifa.world scoreboard omits: expected team sheets and the
 // goal/card timeline. Failures are non-fatal — a match simply keeps whatever the

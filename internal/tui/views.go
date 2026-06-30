@@ -30,10 +30,7 @@ func (m Model) View() string {
 	status := m.renderStatusLine()
 	footer := m.renderFooter()
 
-	// Reserve space for the banner, status line, footer, and the blank spacer
-	// rows so the scrollable/pane body never pushes content off screen.
-	chrome := lipgloss.Height(banner) + lipgloss.Height(status) + lipgloss.Height(footer) + 4
-	availableRows := max(6, m.height-chrome)
+	availableRows := m.availableBodyRows()
 
 	var body string
 	if m.currentView == ViewLiveMatches {
@@ -84,34 +81,38 @@ func (m Model) renderStatusLine() string {
 	return mutedStyle.Render(strings.Join(parts, "  |  "))
 }
 
-func (m Model) renderScrollBody(availableRows int) string {
-	body := m.renderBody()
+// availableBodyRows is the height available for the body between the banner,
+// status line, footer, and their spacer rows. Update and View must agree on this
+// figure so the scroll viewport's paging matches what is shown.
+func (m Model) availableBodyRows() int {
+	chrome := lipgloss.Height(m.renderBanner()) +
+		lipgloss.Height(m.renderStatusLine()) +
+		lipgloss.Height(m.renderFooter()) + 4
+	return max(6, m.height-chrome)
+}
 
-	// When the content fits, center it vertically so the group cards sit in the
-	// middle of the screen instead of being pinned to the top. Only fall back to
-	// the scrolling viewport when the content is too tall to show at once.
-	if lipgloss.Height(body) <= availableRows {
+// renderScrollBody shows the standings/bracket body. The viewport's content and
+// size are kept in sync from Update (see syncScrollViewport), so here we only
+// decide between centering short content and scrolling tall content.
+func (m Model) renderScrollBody(availableRows int) string {
+	if m.viewport.TotalLineCount() <= m.viewport.Height {
+		body := m.renderBody()
 		return lipgloss.Place(lipgloss.Width(body), availableRows, lipgloss.Center, lipgloss.Center, body)
 	}
-
-	vp := m.viewport
-	vp.Width = min(max(20, m.width-2), max(20, lipgloss.Width(body)))
-	vp.Height = availableRows
-	vp.SetContent(body)
-	return vp.View()
+	return m.viewport.View()
 }
 
 func (m Model) renderFooter() string {
-	help := "left/right day | up/down match | tab standings | r refresh | q quit"
+	help := "left/right day | up/down match | tab view | r refresh | q quit"
 	if m.currentView != ViewLiveMatches {
-		help = "tab matches | up/down scroll | r refresh | q quit"
+		help = "tab view | up/down scroll | r refresh | q quit"
 	} else if m.details.Match.Status != types.StatusScheduled &&
 		(len(m.details.HomeLineup.Players) > 0 || len(m.details.AwayLineup.Players) > 0) {
 		toggle := "l lineup"
 		if m.showLineups {
 			toggle = "l stats"
 		}
-		help = "left/right day | up/down match | " + toggle + " | tab standings | r refresh | q quit"
+		help = "left/right day | up/down match | " + toggle + " | tab view | r refresh | q quit"
 	}
 
 	if m.err != nil {
@@ -210,10 +211,14 @@ func clampHeight(content string, height int) string {
 }
 
 func (m Model) renderBody() string {
-	if m.currentView == ViewStandings {
+	switch m.currentView {
+	case ViewStandings:
 		return m.renderStandings()
+	case ViewBracket:
+		return m.renderBracket()
+	default:
+		return m.renderLiveMatches()
 	}
-	return m.renderLiveMatches()
 }
 
 func (m Model) renderLiveMatches() string {
@@ -1496,11 +1501,104 @@ func renderStandingGroup(group types.GroupStanding, nameWidth int) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-func (m Model) currentViewLabel() string {
-	if m.currentView == ViewStandings {
-		return "group standings"
+// renderBracket lays out the knockout bracket as a stack of rounds, each round's
+// fixtures tiled into a responsive grid of cards. The whole thing scrolls
+// vertically via the shared viewport (renderScrollBody) when it is too tall.
+func (m Model) renderBracket() string {
+	if len(m.bracket) == 0 {
+		return mutedStyle.Render("No knockout bracket available yet.")
 	}
-	return "dashboard"
+
+	const cardInner = 22
+	// Card outer width = inner + padding(2) + border(2) + MarginRight(1).
+	cardOuter := cardInner + 5
+	cols := clamp(max(20, min(m.width, 150))/cardOuter, 1, 4)
+
+	sections := make([]string, 0, len(m.bracket))
+	for _, round := range m.bracket {
+		var b strings.Builder
+		b.WriteString(tableHeaderStyle.Render(strings.ToUpper(round.Name)))
+		b.WriteString("\n")
+		for start := 0; start < len(round.Matches); start += cols {
+			end := min(len(round.Matches), start+cols)
+			cells := make([]string, 0, end-start)
+			for i := start; i < end; i++ {
+				cells = append(cells, groupCardStyle.Render(renderBracketMatch(round.Matches[i], cardInner)))
+			}
+			b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, cells...))
+			b.WriteString("\n")
+		}
+		sections = append(sections, strings.TrimRight(b.String(), "\n"))
+	}
+
+	return strings.Join(sections, "\n\n")
+}
+
+// renderBracketMatch draws one fixture as a three-line card: the two teams (the
+// advancing side highlighted) and a status line (kickoff for upcoming games, the
+// result — with penalties — otherwise).
+func renderBracketMatch(match types.BracketMatch, width int) string {
+	scheduled := match.Status == types.StatusScheduled
+
+	homeScore, awayScore := "", ""
+	if !scheduled {
+		homeScore = fmt.Sprintf("%d", match.Score.Home)
+		awayScore = fmt.Sprintf("%d", match.Score.Away)
+		if match.HasShootout {
+			homeScore += fmt.Sprintf(" (%d)", match.ShootoutHome)
+			awayScore += fmt.Sprintf(" (%d)", match.ShootoutAway)
+		}
+	}
+
+	home := bracketTeamLine(match.Home.Name, homeScore, match.Winner == "home", scheduled, width)
+	away := bracketTeamLine(match.Away.Name, awayScore, match.Winner == "away", scheduled, width)
+
+	var status string
+	switch {
+	case scheduled:
+		status = mutedStyle.Render(match.Kickoff.In(displayLocation).Format("Jan 2 · 15:04"))
+	case match.Status == types.StatusLive || match.Status == types.StatusHalfTime || match.Status == types.StatusExtraTime:
+		status = tableHeaderStyle.Render(string(match.Status))
+	default:
+		status = mutedStyle.Render("FT")
+	}
+	status = lipgloss.NewStyle().Width(width).Align(lipgloss.Center).Render(status)
+
+	return lipgloss.JoinVertical(lipgloss.Left, home, away, status)
+}
+
+// bracketTeamLine renders "Team        score" within width, highlighting the
+// winner and dimming both sides for fixtures that have not been played.
+func bracketTeamLine(name, score string, winner, scheduled bool, width int) string {
+	style := normalRowStyle
+	switch {
+	case scheduled:
+		style = mutedStyle
+	case winner:
+		style = selectedRowStyle
+	}
+
+	// Reserve a score column only when there is a score, so upcoming fixtures can
+	// use the full width for their (often long) placeholder names.
+	scoreWidth := 0
+	if score != "" {
+		scoreWidth = 6
+	}
+	nameWidth := max(3, width-scoreWidth)
+	left := fmt.Sprintf("%-*s", nameWidth, truncate(name, nameWidth))
+	right := fmt.Sprintf("%*s", scoreWidth, score)
+	return style.Render(left + right)
+}
+
+func (m Model) currentViewLabel() string {
+	switch m.currentView {
+	case ViewStandings:
+		return "group standings"
+	case ViewBracket:
+		return "knockout bracket"
+	default:
+		return "dashboard"
+	}
 }
 
 // matchesForSelectedDate returns the matches the model is currently holding.
